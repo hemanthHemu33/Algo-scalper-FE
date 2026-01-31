@@ -1,21 +1,24 @@
-import React from 'react';
-import { useSettings } from './lib/settingsContext';
-import { useStatus, useSubscriptions } from './lib/hooks';
-import { postJson } from './lib/http';
-import { buildKiteLoginUrl, parseKiteRedirect } from './lib/kiteAuth';
-import { ChartPanel, type ChartConfig } from './components/ChartPanel';
+import React from "react";
+import { useSettings } from "./lib/settingsContext";
+import { useStatus, useSubscriptions } from "./lib/hooks";
+import { postJson } from "./lib/http";
+import { buildKiteLoginUrl, parseKiteRedirect } from "./lib/kiteAuth";
+import { ChartPanel, type ChartConfig } from "./components/ChartPanel";
 
 function normalizeBaseUrl(u: string) {
-  return u.trim().replace(/\/$/, '');
+  return u.trim().replace(/\/$/, "");
 }
 
-const KITE_SESSION_PATH = import.meta.env.VITE_KITE_SESSION_PATH || '/admin/kite/session';
+const KITE_SESSION_PATH =
+  import.meta.env.VITE_KITE_SESSION_PATH || "/admin/kite/session";
 
 export default function App() {
   const { settings, setSettings } = useSettings();
   const [draftBase, setDraftBase] = React.useState(settings.baseUrl);
   const [draftKey, setDraftKey] = React.useState(settings.apiKey);
-  const [draftKiteApiKey, setDraftKiteApiKey] = React.useState(settings.kiteApiKey);
+  const [draftKiteApiKey, setDraftKiteApiKey] = React.useState(
+    settings.kiteApiKey,
+  );
 
   const statusQ = useStatus(2000);
   const subsQ = useSubscriptions(5000);
@@ -32,14 +35,18 @@ export default function App() {
   const [kiteBusy, setKiteBusy] = React.useState(false);
   const [kiteMsg, setKiteMsg] = React.useState<string | null>(null);
   const [kiteErr, setKiteErr] = React.useState<string | null>(null);
-  const [kiteRequestToken, setKiteRequestToken] = React.useState<string | null>(null);
+  const [kiteRequestToken, setKiteRequestToken] = React.useState<string | null>(
+    null,
+  );
 
   // auto-assign tokens to empty charts (first 4 subscribed tokens)
   React.useEffect(() => {
     if (!tokens.length) return;
     setCharts((prev) => {
       const next = [...prev];
-      const used = new Set(next.map((c) => c.token).filter(Boolean) as number[]);
+      const used = new Set(
+        next.map((c) => c.token).filter(Boolean) as number[],
+      );
       for (let i = 0; i < next.length; i += 1) {
         if (next[i].token) continue;
         const pick = tokens.find((t) => !used.has(t));
@@ -65,14 +72,16 @@ export default function App() {
 
     // Clear query params immediately to avoid repeated exchanges on refresh.
     const cleanUrl = `${window.location.origin}${window.location.pathname}${window.location.hash}`;
-    window.history.replaceState({}, '', cleanUrl);
+    window.history.replaceState({}, "", cleanUrl);
 
-    postJson<any>(settings, KITE_SESSION_PATH, { request_token: r.requestToken })
+    postJson<any>(settings, KITE_SESSION_PATH, {
+      request_token: r.requestToken,
+    })
       .then((res) => {
         if (res?.ok === false) {
-          throw new Error(res?.error || 'Kite session exchange failed');
+          throw new Error(res?.error || "Kite session exchange failed");
         }
-        setKiteMsg('Kite session created on backend');
+        setKiteMsg("Kite session created on backend");
         setKiteErr(null);
         statusQ.refetch();
       })
@@ -101,21 +110,23 @@ export default function App() {
   const onKiteLogin = () => {
     const apiKey = (draftKiteApiKey || settings.kiteApiKey).trim();
     if (!apiKey) {
-      setKiteErr('Missing Kite API key. Add VITE_KITE_API_KEY in your FE .env or enter it in the top bar and click Save.');
+      setKiteErr(
+        "Missing Kite API key. Add VITE_KITE_API_KEY in your FE .env or enter it in the top bar and click Save.",
+      );
       setKiteMsg(null);
       return;
     }
     const loginUrl = buildKiteLoginUrl(apiKey);
-    window.location.assign(loginUrl);
+    window.open(loginUrl, "_blank");
   };
 
   const copyRequestToken = async () => {
     if (!kiteRequestToken) return;
     try {
       await navigator.clipboard.writeText(kiteRequestToken);
-      setKiteMsg('Copied request_token to clipboard');
+      setKiteMsg("Copied request_token to clipboard");
     } catch {
-      setKiteMsg('Copy failed (browser blocked clipboard)');
+      setKiteMsg("Copy failed (browser blocked clipboard)");
     }
   };
 
@@ -123,7 +134,12 @@ export default function App() {
     <div className="app">
       <div className="topbar">
         <div className="brand">
-          <span className={['statusDot', connected ? (halted ? 'bad' : 'good') : ''].join(' ')} />
+          <span
+            className={[
+              "statusDot",
+              connected ? (halted ? "bad" : "good") : "",
+            ].join(" ")}
+          />
           <span>Kite Scalper Dashboard</span>
           <span className="pill">2×2 charts</span>
           <span className="pill">signals → markers (trades)</span>
@@ -132,11 +148,19 @@ export default function App() {
         <div className="controls">
           <div className="field">
             <label>Backend URL</label>
-            <input value={draftBase} onChange={(e) => setDraftBase(e.target.value)} placeholder="http://localhost:4001" />
+            <input
+              value={draftBase}
+              onChange={(e) => setDraftBase(e.target.value)}
+              placeholder="http://localhost:4001"
+            />
           </div>
           <div className="field">
             <label>API key</label>
-            <input value={draftKey} onChange={(e) => setDraftKey(e.target.value)} placeholder="x-api-key (optional)" />
+            <input
+              value={draftKey}
+              onChange={(e) => setDraftKey(e.target.value)}
+              placeholder="x-api-key (optional)"
+            />
           </div>
           <div className="field">
             <label>Kite API key</label>
@@ -153,25 +177,45 @@ export default function App() {
           </button>
 
           <span className="pill">
-            {connected ? (halted ? 'HALTED / KILL' : 'CONNECTED') : 'DISCONNECTED'}
+            {connected
+              ? halted
+                ? "HALTED / KILL"
+                : "CONNECTED"
+              : "DISCONNECTED"}
           </span>
 
-          <span className={['pill', hasKiteSession ? 'good' : 'bad'].join(' ')}>
-            {hasKiteSession ? 'KITE: LOGGED IN' : 'KITE: LOGIN REQUIRED'}
+          <span className={["pill", hasKiteSession ? "good" : "bad"].join(" ")}>
+            {hasKiteSession ? "KITE: LOGGED IN" : "KITE: LOGIN REQUIRED"}
           </span>
 
-          <button className="btn" onClick={onKiteLogin} disabled={kiteBusy} title="Opens the official Kite Connect login page">
-            {kiteBusy ? 'Kite…' : hasKiteSession ? 'Re-login Kite' : 'Login Kite'}
+          <button
+            className="btn"
+            onClick={onKiteLogin}
+            disabled={kiteBusy}
+            title="Opens the official Kite Connect login page"
+          >
+            {kiteBusy
+              ? "Kite…"
+              : hasKiteSession
+                ? "Re-login Kite"
+                : "Login Kite"}
           </button>
 
           {kiteRequestToken ? (
-            <button className="btn" onClick={copyRequestToken} disabled={kiteBusy} title="Copy request_token (only if redirect_url points to FE)">
+            <button
+              className="btn"
+              onClick={copyRequestToken}
+              disabled={kiteBusy}
+              title="Copy request_token (only if redirect_url points to FE)"
+            >
               Copy request_token
             </button>
           ) : null}
 
           {kiteErr ? <span className="pill bad">{kiteErr}</span> : null}
-          {!kiteErr && kiteMsg ? <span className="pill good">{kiteMsg}</span> : null}
+          {!kiteErr && kiteMsg ? (
+            <span className="pill good">{kiteMsg}</span>
+          ) : null}
         </div>
       </div>
 
