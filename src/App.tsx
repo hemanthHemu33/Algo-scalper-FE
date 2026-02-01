@@ -4,6 +4,7 @@ import { useStatus, useSubscriptions, useTradesRecent } from "./lib/hooks";
 import { postJson } from "./lib/http";
 import { buildKiteLoginUrl, parseKiteRedirect } from "./lib/kiteAuth";
 import { ChartPanel, type ChartConfig } from "./components/ChartPanel";
+import { useSocketBridge } from "./lib/socket";
 
 function normalizeBaseUrl(u: string) {
   return u.trim().replace(/\/$/, "");
@@ -23,6 +24,7 @@ export default function App() {
   const statusQ = useStatus(2000);
   const subsQ = useSubscriptions(5000);
   const tradesQ = useTradesRecent(80, 2000);
+  const socketState = useSocketBridge();
   const tokens: number[] = subsQ.data?.tokens || [];
   const trades = tradesQ.data?.rows || [];
 
@@ -188,6 +190,20 @@ export default function App() {
 
           <span className={["pill", hasKiteSession ? "good" : "bad"].join(" ")}>
             {hasKiteSession ? "KITE: LOGGED IN" : "KITE: LOGIN REQUIRED"}
+          </span>
+
+          <span
+            className={[
+              "pill",
+              socketState.connected ? "good" : "bad",
+            ].join(" ")}
+            title={
+              socketState.lastEvent
+                ? `Last socket event: ${socketState.lastEvent}`
+                : "Socket events pending"
+            }
+          >
+            {socketState.connected ? "WS: CONNECTED" : "WS: OFFLINE"}
           </span>
 
           <button
