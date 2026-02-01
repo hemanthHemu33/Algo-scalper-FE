@@ -13,6 +13,8 @@ import {
   toLwVolume,
   buildTradeMarkers,
   getLatestTradeForToken,
+  formatIstDateTime,
+  formatIstTick,
 } from "../lib/chartUtils";
 
 type Props = {
@@ -59,6 +61,11 @@ export function CandleChart({ token, title, candles, trades, intervalMin }: Prop
         borderColor: "rgba(255,255,255,0.10)",
         timeVisible: true,
         secondsVisible: false,
+        tickMarkFormatter: (time, tickMarkType) =>
+          formatIstTick(time, tickMarkType),
+      },
+      localization: {
+        timeFormatter: (time) => formatIstDateTime(time),
       },
       crosshair: {
         vertLine: {
