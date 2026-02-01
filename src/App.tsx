@@ -21,10 +21,10 @@ export default function App() {
     settings.kiteApiKey,
   );
 
+  const statusQ = useStatus(2000);
+  const subsQ = useSubscriptions(5000);
+  const tradesQ = useTradesRecent(80, 2000);
   const socketState = useSocketBridge();
-  const statusQ = useStatus(socketState.connected ? false : 2000);
-  const subsQ = useSubscriptions(socketState.connected ? false : 5000);
-  const tradesQ = useTradesRecent(80, socketState.connected ? false : 2000);
   const tokens: number[] = subsQ.data?.tokens || [];
   const trades = tradesQ.data?.rows || [];
 
