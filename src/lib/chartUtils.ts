@@ -1,68 +1,72 @@
 import { TickMarkType } from 'lightweight-charts';
-import type { Time } from 'lightweight-charts';
+import type { BusinessDay, Time } from 'lightweight-charts';
 import type { CandleRow, TradeRow } from '../types/backend';
 
 const IST_TIME_ZONE = 'Asia/Kolkata';
+
+function isBusinessDay(time: Time): time is BusinessDay {
+  return typeof time === 'object' && time !== null && 'year' in time;
+}
+
+function isYYYYMMDD(s: string): boolean {
+  return /^\d{4}-\d{2}-\d{2}$/.test(s);
+}
 
 function toIstDate(time: Time): Date {
   if (typeof time === 'number') {
     return new Date(time * 1000);
   }
-  if ('year' in time) {
+
+  if (typeof time === 'string') {
+    // lightweight-charts uses YYYY-MM-DD strings for business days.
+    if (isYYYYMMDD(time)) {
+      const [y, m, d] = time.split('-').map((x) => Number(x));
+      return new Date(Date.UTC(y, m - 1, d));
+    }
+    // Fallback: try Date parsing.
+    const dt = new Date(time);
+    return Number.isFinite(dt.getTime()) ? dt : new Date(0);
+  }
+
+  if (isBusinessDay(time)) {
     return new Date(Date.UTC(time.year, time.month - 1, time.day));
   }
-  return new Date(Number(time) * 1000);
+
+  return new Date(0);
 }
 
-function formatIstWithOptions(date: Date, options: Intl.DateTimeFormatOptions) {
-  return new Intl.DateTimeFormat('en-IN', {
-    timeZone: IST_TIME_ZONE,
-    ...options,
-  }).format(date);
-}
+// Intl.DateTimeFormat construction is relatively expensive. Keep a small cache.
+const fmt = {
+  year: new Intl.DateTimeFormat('en-IN', { timeZone: IST_TIME_ZONE, year: 'numeric' }),
+  month: new Intl.DateTimeFormat('en-IN', { timeZone: IST_TIME_ZONE, month: 'short' }),
+  dayMonth: new Intl.DateTimeFormat('en-IN', { timeZone: IST_TIME_ZONE, day: '2-digit', month: 'short' }),
+  hm: new Intl.DateTimeFormat('en-IN', { timeZone: IST_TIME_ZONE, hour: '2-digit', minute: '2-digit', hour12: false }),
+  hms: new Intl.DateTimeFormat('en-IN', { timeZone: IST_TIME_ZONE, hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }),
+  dateTime: new Intl.DateTimeFormat('en-IN', { timeZone: IST_TIME_ZONE, year: '2-digit', month: 'short', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false }),
+  dateTimeSec: new Intl.DateTimeFormat('en-IN', { timeZone: IST_TIME_ZONE, year: '2-digit', month: 'short', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }),
+};
 
 export function formatIstTick(time: Time, tickMarkType: TickMarkType): string {
   const date = toIstDate(time);
   switch (tickMarkType) {
     case TickMarkType.Year:
-      return formatIstWithOptions(date, { year: 'numeric' });
+      return fmt.year.format(date);
     case TickMarkType.Month:
-      return formatIstWithOptions(date, { month: 'short' });
+      return fmt.month.format(date);
     case TickMarkType.DayOfMonth:
-      return formatIstWithOptions(date, { day: '2-digit', month: 'short' });
+      return fmt.dayMonth.format(date);
     case TickMarkType.Time:
-      return formatIstWithOptions(date, {
-        hour: '2-digit',
-        minute: '2-digit',
-        hour12: false,
-      });
+      return fmt.hm.format(date);
     case TickMarkType.TimeWithSeconds:
-      return formatIstWithOptions(date, {
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit',
-        hour12: false,
-      });
+      return fmt.hms.format(date);
     default:
-      return formatIstWithOptions(date, {
-        hour: '2-digit',
-        minute: '2-digit',
-        hour12: false,
-      });
+      return fmt.hm.format(date);
   }
 }
 
 export function formatIstDateTime(time: Time, withSeconds = false): string {
   const date = toIstDate(time);
-  return formatIstWithOptions(date, {
-    year: '2-digit',
-    month: 'short',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: withSeconds ? '2-digit' : undefined,
-    hour12: false,
-  });
+  return withSeconds ? fmt.dateTimeSec.format(date) : fmt.dateTime.format(date);
 }
 
 export type LwCandle = { time: number; open: number; high: number; low: number; close: number };

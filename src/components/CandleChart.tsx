@@ -6,6 +6,8 @@ import {
   type CandlestickData,
   type HistogramData,
   LineStyle,
+  TickMarkType,
+  type Time,
 } from "lightweight-charts";
 import type { CandleRow, TradeRow } from "../types/backend";
 import {
@@ -25,7 +27,13 @@ type Props = {
   intervalMin: number;
 };
 
-export function CandleChart({ token, title, candles, trades, intervalMin }: Props) {
+export function CandleChart({
+  token,
+  title,
+  candles,
+  trades,
+  intervalMin,
+}: Props) {
   const containerRef = React.useRef<HTMLDivElement | null>(null);
   const chartRef = React.useRef<IChartApi | null>(null);
   const candleSeriesRef = React.useRef<ISeriesApi<"Candlestick"> | null>(null);
@@ -61,11 +69,11 @@ export function CandleChart({ token, title, candles, trades, intervalMin }: Prop
         borderColor: "rgba(255,255,255,0.10)",
         timeVisible: true,
         secondsVisible: false,
-        tickMarkFormatter: (time, tickMarkType) =>
+        tickMarkFormatter: (time: Time, tickMarkType: TickMarkType) =>
           formatIstTick(time, tickMarkType),
       },
       localization: {
-        timeFormatter: (time) => formatIstDateTime(time),
+        timeFormatter: (time: Time) => formatIstDateTime(time),
       },
       crosshair: {
         vertLine: {
@@ -145,6 +153,14 @@ export function CandleChart({ token, title, candles, trades, intervalMin }: Prop
 
     const data = lwCandles as CandlestickData[];
     cs.setData(data);
+
+    // If the user previously dragged the price axis, lightweight-charts can switch to manual scaling.
+    // Re-enable autoscale on new data so the right-side price scale keeps updating.
+    try {
+      cs.priceScale().applyOptions({ autoScale: true });
+    } catch {
+      // ignore
+    }
 
     const volData = lwVol.map((v) => ({
       time: v.time,
