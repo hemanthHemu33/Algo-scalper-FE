@@ -135,6 +135,11 @@ button {
   color: var(--text);
 }
 
+.btn.small {
+  padding: 6px 10px;
+  font-size: 12px;
+}
+
 .btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
@@ -159,6 +164,13 @@ button {
   min-height: 0;
 }
 
+.panelFullscreen {
+  position: fixed;
+  inset: 12px;
+  z-index: 1000;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.45);
+}
+
 .panelHeader {
   display: flex;
   align-items: center;
@@ -174,6 +186,12 @@ button {
   align-items: center;
   gap: 10px;
   flex-wrap: wrap;
+}
+
+.panelHeaderActions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
 .smallText {

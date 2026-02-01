@@ -1,3 +1,4 @@
+import React from 'react';
 import { CandleChart } from './CandleChart';
 import { useCandles } from '../lib/hooks';
 import type { CandleRow, TradeRow } from '../types/backend';
@@ -31,14 +32,35 @@ export function ChartPanel({
   socketConnected,
   onChange,
 }: Props) {
+  const [isFullscreen, setIsFullscreen] = React.useState(false);
   const token = config.token;
   const intervalMin = config.intervalMin;
+
+  React.useEffect(() => {
+    if (!isFullscreen) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setIsFullscreen(false);
+      }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [isFullscreen]);
+
+  React.useEffect(() => {
+    if (!isFullscreen) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [isFullscreen]);
 
   const candlesQ = useCandles(
     token,
     intervalMin,
     320,
-    socketConnected ? false : 2500,
+    socketConnected ? 1000 : 2500,
   );
 
   const rows: CandleRow[] = candlesQ.data?.rows || [];
@@ -51,7 +73,7 @@ export function ChartPanel({
     null;
 
   return (
-    <div className="panel">
+    <div className={["panel", isFullscreen ? "panelFullscreen" : ""].join(" ")}>
       <div className="panelHeader">
         <div className="left">
           <div className="field">
@@ -88,8 +110,17 @@ export function ChartPanel({
           </div>
         </div>
 
-        <div className="smallText">
-          {tradesLoading ? 'trades…' : trades.length ? `trades: ${trades.length}` : ''}
+        <div className="panelHeaderActions">
+          <div className="smallText">
+            {tradesLoading ? 'trades…' : trades.length ? `trades: ${trades.length}` : ''}
+          </div>
+          <button
+            className="btn small"
+            type="button"
+            onClick={() => setIsFullscreen((prev) => !prev)}
+          >
+            {isFullscreen ? 'Close' : 'Full screen'}
+          </button>
         </div>
       </div>
 
