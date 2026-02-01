@@ -246,6 +246,7 @@ export default function App() {
             tokens={tokens}
             trades={trades}
             tradesLoading={tradesQ.isFetching}
+            socketConnected={socketState.connected}
             onChange={(next) =>
               setCharts((prev) => {
                 const cp = [...prev];

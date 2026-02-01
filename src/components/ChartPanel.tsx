@@ -13,6 +13,7 @@ type Props = {
   tokens: number[];
   trades: TradeRow[];
   tradesLoading: boolean;
+  socketConnected: boolean;
   onChange: (next: ChartConfig) => void;
 };
 
@@ -21,11 +22,24 @@ function tokenLabel(t: number | null) {
   return String(t);
 }
 
-export function ChartPanel({ index, config, tokens, trades, tradesLoading, onChange }: Props) {
+export function ChartPanel({
+  index,
+  config,
+  tokens,
+  trades,
+  tradesLoading,
+  socketConnected,
+  onChange,
+}: Props) {
   const token = config.token;
   const intervalMin = config.intervalMin;
 
-  const candlesQ = useCandles(token, intervalMin, 320, 2500);
+  const candlesQ = useCandles(
+    token,
+    intervalMin,
+    320,
+    socketConnected ? false : 2500,
+  );
 
   const rows: CandleRow[] = candlesQ.data?.rows || [];
 
