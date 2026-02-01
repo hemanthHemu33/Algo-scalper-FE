@@ -1,6 +1,6 @@
 import React from "react";
 import { useSettings } from "./lib/settingsContext";
-import { useStatus, useSubscriptions } from "./lib/hooks";
+import { useStatus, useSubscriptions, useTradesRecent } from "./lib/hooks";
 import { postJson } from "./lib/http";
 import { buildKiteLoginUrl, parseKiteRedirect } from "./lib/kiteAuth";
 import { ChartPanel, type ChartConfig } from "./components/ChartPanel";
@@ -22,7 +22,9 @@ export default function App() {
 
   const statusQ = useStatus(2000);
   const subsQ = useSubscriptions(5000);
+  const tradesQ = useTradesRecent(80, 2000);
   const tokens: number[] = subsQ.data?.tokens || [];
+  const trades = tradesQ.data?.rows || [];
 
   const [charts, setCharts] = React.useState<ChartConfig[]>(() => [
     { token: null, intervalMin: 1 },
@@ -226,6 +228,8 @@ export default function App() {
             index={i}
             config={cfg}
             tokens={tokens}
+            trades={trades}
+            tradesLoading={tradesQ.isFetching}
             onChange={(next) =>
               setCharts((prev) => {
                 const cp = [...prev];

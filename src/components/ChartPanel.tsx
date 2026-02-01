@@ -1,6 +1,6 @@
 import { CandleChart } from './CandleChart';
-import { useCandles, useTradesRecent } from '../lib/hooks';
-import type { TradeRow } from '../types/backend';
+import { useCandles } from '../lib/hooks';
+import type { CandleRow, TradeRow } from '../types/backend';
 
 export type ChartConfig = {
   token: number | null;
@@ -11,27 +11,30 @@ type Props = {
   index: number;
   config: ChartConfig;
   tokens: number[];
+  trades: TradeRow[];
+  tradesLoading: boolean;
   onChange: (next: ChartConfig) => void;
 };
 
 function tokenLabel(t: number | null) {
-  if (!t) return 'Select token';
+  if (t === null) return 'Select token';
   return String(t);
 }
 
-export function ChartPanel({ index, config, tokens, onChange }: Props) {
+export function ChartPanel({ index, config, tokens, trades, tradesLoading, onChange }: Props) {
   const token = config.token;
   const intervalMin = config.intervalMin;
 
-  const tradesQ = useTradesRecent(80, 2000);
   const candlesQ = useCandles(token, intervalMin, 320, 2500);
 
-  const trades: TradeRow[] = tradesQ.data?.rows || [];
-  const rows = candlesQ.data?.rows || [];
+  const rows: CandleRow[] = candlesQ.data?.rows || [];
 
   const title = `Chart ${index + 1} • token ${token ?? '-'} • ${intervalMin}m`;
 
-  const errorMsg = (candlesQ.error as any)?.response?.data?.error || (candlesQ.error as any)?.message || null;
+  const errorMsg =
+    (candlesQ.error as any)?.response?.data?.error ||
+    (candlesQ.error as any)?.message ||
+    null;
 
   return (
     <div className="panel">
@@ -72,16 +75,18 @@ export function ChartPanel({ index, config, tokens, onChange }: Props) {
         </div>
 
         <div className="smallText">
-          {tradesQ.isFetching ? 'trades…' : tradesQ.data ? `trades: ${trades.length}` : ''}
+          {tradesLoading ? 'trades…' : trades.length ? `trades: ${trades.length}` : ''}
         </div>
       </div>
 
       <div className="chartWrap">
-        {token && rows.length ? (
-          <CandleChart token={token} title={title} candles={rows} trades={trades} />
+        {token !== null && rows.length ? (
+          <CandleChart token={token} title={title} candles={rows} trades={trades} intervalMin={intervalMin} />
         ) : (
           <div style={{ padding: 12, color: 'rgba(255,255,255,0.65)', fontSize: 12 }}>
-            {token ? 'Waiting for candles… (need /admin/candles/recent)' : 'Select a token to load candles'}
+            {token !== null
+              ? 'Waiting for candles… (need /admin/candles/recent)'
+              : 'Select a token to load candles'}
           </div>
         )}
       </div>

@@ -7,7 +7,7 @@ import {
   type HistogramData,
   LineStyle,
 } from "lightweight-charts";
-import type { TradeRow } from "../types/backend";
+import type { CandleRow, TradeRow } from "../types/backend";
 import {
   toLwCandles,
   toLwVolume,
@@ -18,11 +18,12 @@ import {
 type Props = {
   token: number;
   title: string;
-  candles: any[];
+  candles: CandleRow[];
   trades: TradeRow[];
+  intervalMin: number;
 };
 
-export function CandleChart({ token, title, candles, trades }: Props) {
+export function CandleChart({ token, title, candles, trades, intervalMin }: Props) {
   const containerRef = React.useRef<HTMLDivElement | null>(null);
   const chartRef = React.useRef<IChartApi | null>(null);
   const candleSeriesRef = React.useRef<ISeriesApi<"Candlestick"> | null>(null);
@@ -30,8 +31,12 @@ export function CandleChart({ token, title, candles, trades }: Props) {
   const priceLinesRef = React.useRef<any[]>([]);
   const didInitViewRef = React.useRef(false);
 
-  const lwCandles = React.useMemo(() => toLwCandles(candles as any), [candles]);
-  const lwVol = React.useMemo(() => toLwVolume(candles as any), [candles]);
+  const lwCandles = React.useMemo(() => toLwCandles(candles), [candles]);
+  const lwVol = React.useMemo(() => toLwVolume(candles), [candles]);
+
+  React.useEffect(() => {
+    didInitViewRef.current = false;
+  }, [token, intervalMin]);
 
   // init chart once
   React.useEffect(() => {
