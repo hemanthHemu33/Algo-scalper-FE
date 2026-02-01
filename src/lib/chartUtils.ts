@@ -1,4 +1,69 @@
+import { TickMarkType } from 'lightweight-charts';
+import type { Time } from 'lightweight-charts';
 import type { CandleRow, TradeRow } from '../types/backend';
+
+const IST_TIME_ZONE = 'Asia/Kolkata';
+
+function toIstDate(time: Time): Date {
+  if (typeof time === 'number') {
+    return new Date(time * 1000);
+  }
+  if ('year' in time) {
+    return new Date(Date.UTC(time.year, time.month - 1, time.day));
+  }
+  return new Date(Number(time) * 1000);
+}
+
+function formatIstWithOptions(date: Date, options: Intl.DateTimeFormatOptions) {
+  return new Intl.DateTimeFormat('en-IN', {
+    timeZone: IST_TIME_ZONE,
+    ...options,
+  }).format(date);
+}
+
+export function formatIstTick(time: Time, tickMarkType: TickMarkType): string {
+  const date = toIstDate(time);
+  switch (tickMarkType) {
+    case TickMarkType.Year:
+      return formatIstWithOptions(date, { year: 'numeric' });
+    case TickMarkType.Month:
+      return formatIstWithOptions(date, { month: 'short' });
+    case TickMarkType.DayOfMonth:
+      return formatIstWithOptions(date, { day: '2-digit', month: 'short' });
+    case TickMarkType.Time:
+      return formatIstWithOptions(date, {
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+      });
+    case TickMarkType.TimeWithSeconds:
+      return formatIstWithOptions(date, {
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false,
+      });
+    default:
+      return formatIstWithOptions(date, {
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+      });
+  }
+}
+
+export function formatIstDateTime(time: Time, withSeconds = false): string {
+  const date = toIstDate(time);
+  return formatIstWithOptions(date, {
+    year: '2-digit',
+    month: 'short',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: withSeconds ? '2-digit' : undefined,
+    hour12: false,
+  });
+}
 
 export type LwCandle = { time: number; open: number; high: number; low: number; close: number };
 export type LwVolume = { time: number; value: number };
