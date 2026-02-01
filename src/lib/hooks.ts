@@ -3,7 +3,7 @@ import { getJson } from './http';
 import { useSettings } from './settingsContext';
 import type { CandleRow, TradeRow, StatusResponse } from '../types/backend';
 
-export function useStatus(pollMs = 2000) {
+export function useStatus(pollMs: number | false = 2000) {
   const { settings } = useSettings();
   return useQuery({
     queryKey: ['status', settings.baseUrl, settings.apiKey],
@@ -13,7 +13,7 @@ export function useStatus(pollMs = 2000) {
   });
 }
 
-export function useSubscriptions(pollMs = 5000) {
+export function useSubscriptions(pollMs: number | false = 5000) {
   const { settings } = useSettings();
   return useQuery({
     queryKey: ['subs', settings.baseUrl, settings.apiKey],
@@ -23,7 +23,7 @@ export function useSubscriptions(pollMs = 5000) {
   });
 }
 
-export function useTradesRecent(limit = 50, pollMs = 2000) {
+export function useTradesRecent(limit = 50, pollMs: number | false = 2000) {
   const { settings } = useSettings();
   return useQuery({
     queryKey: ['tradesRecent', settings.baseUrl, settings.apiKey, limit],
@@ -33,7 +33,12 @@ export function useTradesRecent(limit = 50, pollMs = 2000) {
   });
 }
 
-export function useCandles(token: number | null, intervalMin: number, limit = 300, pollMs = 3000) {
+export function useCandles(
+  token: number | null,
+  intervalMin: number,
+  limit = 300,
+  pollMs: number | false = 3000,
+) {
   const { settings } = useSettings();
   return useQuery({
     queryKey: ['candles', settings.baseUrl, settings.apiKey, token, intervalMin, limit],
