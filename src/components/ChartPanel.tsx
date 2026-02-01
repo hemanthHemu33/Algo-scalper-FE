@@ -15,7 +15,6 @@ type Props = {
   trades: TradeRow[];
   tradesLoading: boolean;
   socketConnected: boolean;
-  socket: import('socket.io-client').Socket | null;
   onChange: (next: ChartConfig) => void;
 };
 
@@ -31,7 +30,6 @@ export function ChartPanel({
   trades,
   tradesLoading,
   socketConnected,
-  socket,
   onChange,
 }: Props) {
   const token = config.token;
@@ -44,14 +42,6 @@ export function ChartPanel({
     320,
     socketConnected ? false : 2500,
   );
-  useChartSocket({
-    chartId,
-    token,
-    intervalMin,
-    limit: 320,
-    socket,
-    connected: socketConnected,
-  });
 
   const rows: CandleRow[] = candlesQ.data?.rows || [];
 

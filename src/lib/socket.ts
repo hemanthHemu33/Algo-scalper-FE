@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { io, type Socket } from "socket.io-client";
 import { useSettings } from "./settingsContext";
@@ -7,21 +7,15 @@ import type { CandleRow, StatusResponse, TradeRow } from "../types/backend";
 type SocketState = {
   connected: boolean;
   lastEvent: string | null;
-  socket: Socket | null;
 };
 
-type TradesPayload = {
-  ok?: boolean;
-  rows?: TradeRow[];
-};
-
-type ChartPayload = {
-  ok?: boolean;
-  chartId?: string;
-  token?: number;
-  intervalMin?: number;
-  rows?: CandleRow[];
-};
+type CandlePayload =
+  | {
+      token?: number;
+      intervalMin?: number;
+      rows?: CandleRow[];
+    }
+  | CandleRow;
 
 const SOCKET_PATH = import.meta.env.VITE_SOCKET_PATH || "/socket.io";
 
@@ -70,19 +64,17 @@ export function useSocketBridge(): SocketState {
   const queryClient = useQueryClient();
   const [connected, setConnected] = useState(false);
   const [lastEvent, setLastEvent] = useState<string | null>(null);
-  const [socket, setSocket] = useState<Socket | null>(null);
 
   useEffect(() => {
     const baseUrl = normalizeBaseUrl(settings.baseUrl);
     if (!baseUrl) return;
 
-    const liveSocket: Socket = io(baseUrl, {
+    const socket: Socket = io(baseUrl, {
       path: SOCKET_PATH,
       transports: ["websocket"],
       auth: settings.apiKey ? { apiKey: settings.apiKey } : undefined,
       query: settings.apiKey ? { apiKey: settings.apiKey } : undefined,
     });
-    setSocket(liveSocket);
 
     const statusKey = ["status", baseUrl, settings.apiKey];
     const subsKey = ["subs", baseUrl, settings.apiKey];
@@ -105,8 +97,8 @@ export function useSocketBridge(): SocketState {
       setLastEvent("subscriptions");
     };
 
-    const updateTrades = (payload: TradesPayload) => {
-      const incoming = payload?.rows || [];
+    const updateTrades = (payload: TradeRow | TradeRow[]) => {
+      const incoming = Array.isArray(payload) ? payload : [payload];
       if (!incoming.length) return;
       const queries = queryClient
         .getQueryCache()
@@ -122,11 +114,21 @@ export function useSocketBridge(): SocketState {
       setLastEvent("trades");
     };
 
-    const updateCandles = (payload: ChartPayload) => {
-      const rows = payload?.rows || [];
+    const updateCandles = (payload: CandlePayload) => {
+      if (!payload) return;
+      const rows = Array.isArray((payload as any).rows)
+        ? ((payload as any).rows as CandleRow[])
+        : [payload as CandleRow];
       if (!rows.length) return;
-      const token = payload?.token || rows[0]?.instrument_token;
-      const intervalMin = payload?.intervalMin || rows[0]?.interval_min;
+
+      const token =
+        (payload as any).token ||
+        (payload as CandleRow).instrument_token ||
+        rows[0]?.instrument_token;
+      const intervalMin =
+        (payload as any).intervalMin ||
+        (payload as CandleRow).interval_min ||
+        rows[0]?.interval_min;
 
       if (!token || !intervalMin) return;
 
@@ -148,60 +150,24 @@ export function useSocketBridge(): SocketState {
       setLastEvent("candles");
     };
 
-    liveSocket.on("connect", () => {
-      setConnected(true);
-      liveSocket.emit("status:subscribe", {});
-      liveSocket.emit("subs:subscribe", {});
-      liveSocket.emit("trades:subscribe", { limit: 80 });
-    });
-    liveSocket.on("disconnect", () => setConnected(false));
-    liveSocket.on("status:update", updateStatus);
-    liveSocket.on("subs:update", updateSubscriptions);
-    liveSocket.on("trades:snapshot", updateTrades);
-    liveSocket.on("trades:delta", updateTrades);
-    liveSocket.on("chart:snapshot", updateCandles);
-    liveSocket.on("chart:delta", updateCandles);
+    socket.on("connect", () => setConnected(true));
+    socket.on("disconnect", () => setConnected(false));
+    socket.on("status", updateStatus);
+    socket.on("status:update", updateStatus);
+    socket.on("subscriptions", updateSubscriptions);
+    socket.on("subs", updateSubscriptions);
+    socket.on("trade", updateTrades);
+    socket.on("trades", updateTrades);
+    socket.on("trades:recent", updateTrades);
+    socket.on("candle", updateCandles);
+    socket.on("candles", updateCandles);
+    socket.on("candles:recent", updateCandles);
 
     return () => {
-      liveSocket.emit("status:unsubscribe");
-      liveSocket.emit("subs:unsubscribe");
-      liveSocket.emit("trades:unsubscribe");
-      liveSocket.removeAllListeners();
-      liveSocket.disconnect();
-      setSocket(null);
+      socket.removeAllListeners();
+      socket.disconnect();
     };
   }, [queryClient, settings.apiKey, settings.baseUrl]);
 
-  return useMemo(
-    () => ({
-      connected,
-      lastEvent,
-      socket,
-    }),
-    [connected, lastEvent, socket],
-  );
-}
-
-export function useChartSocket(opts: {
-  chartId: string;
-  token: number | null;
-  intervalMin: number;
-  limit: number;
-  socket: Socket | null;
-  connected: boolean;
-}) {
-  const { chartId, token, intervalMin, limit, socket, connected } = opts;
-
-  useEffect(() => {
-    if (!socket || !connected || !token) return;
-    socket.emit("chart:subscribe", {
-      chartId,
-      token,
-      intervalMin,
-      limit,
-    });
-    return () => {
-      socket.emit("chart:unsubscribe", { chartId });
-    };
-  }, [chartId, connected, intervalMin, limit, socket, token]);
+  return { connected, lastEvent };
 }
