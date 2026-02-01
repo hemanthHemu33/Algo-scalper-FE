@@ -1,6 +1,5 @@
 import { CandleChart } from './CandleChart';
 import { useCandles } from '../lib/hooks';
-import { useChartSocket } from '../lib/socket';
 import type { CandleRow, TradeRow } from '../types/backend';
 
 export type ChartConfig = {
@@ -34,7 +33,6 @@ export function ChartPanel({
 }: Props) {
   const token = config.token;
   const intervalMin = config.intervalMin;
-  const chartId = `chart-${index + 1}`;
 
   const candlesQ = useCandles(
     token,
