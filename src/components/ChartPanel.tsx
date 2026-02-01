@@ -1,5 +1,6 @@
 import { CandleChart } from './CandleChart';
 import { useCandles } from '../lib/hooks';
+import { useChartSocket } from '../lib/socket';
 import type { CandleRow, TradeRow } from '../types/backend';
 
 export type ChartConfig = {
@@ -13,6 +14,8 @@ type Props = {
   tokens: number[];
   trades: TradeRow[];
   tradesLoading: boolean;
+  socketConnected: boolean;
+  socket: import('socket.io-client').Socket | null;
   onChange: (next: ChartConfig) => void;
 };
 
@@ -21,11 +24,34 @@ function tokenLabel(t: number | null) {
   return String(t);
 }
 
-export function ChartPanel({ index, config, tokens, trades, tradesLoading, onChange }: Props) {
+export function ChartPanel({
+  index,
+  config,
+  tokens,
+  trades,
+  tradesLoading,
+  socketConnected,
+  socket,
+  onChange,
+}: Props) {
   const token = config.token;
   const intervalMin = config.intervalMin;
+  const chartId = `chart-${index + 1}`;
 
-  const candlesQ = useCandles(token, intervalMin, 320, 2500);
+  const candlesQ = useCandles(
+    token,
+    intervalMin,
+    320,
+    socketConnected ? false : 2500,
+  );
+  useChartSocket({
+    chartId,
+    token,
+    intervalMin,
+    limit: 320,
+    socket,
+    connected: socketConnected,
+  });
 
   const rows: CandleRow[] = candlesQ.data?.rows || [];
 
