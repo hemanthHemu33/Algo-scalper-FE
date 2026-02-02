@@ -36,6 +36,14 @@ button {
   flex-direction: column;
 }
 
+.main {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  gap: 12px;
+  padding: 12px;
+}
+
 .topbar {
   display: flex;
   align-items: center;
@@ -147,11 +155,12 @@ button {
 
 .grid {
   flex: 1;
+  min-width: 0;
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   grid-template-rows: repeat(2, minmax(0, 1fr));
   gap: 12px;
-  padding: 12px;
+  padding: 0;
 }
 
 .panel {
@@ -217,7 +226,69 @@ button {
   border-top: 1px solid var(--border);
 }
 
+.panelPlaceholder {
+  padding: 12px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+}
+
+.goodText { color: var(--good); }
+.badText { color: var(--bad); }
+
+.blotter {
+  width: 420px;
+  max-width: 42vw;
+  min-width: 320px;
+}
+
+.blotterBody {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.blotterTable {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.blotterTable thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  text-align: left;
+  font-size: 12px;
+  color: var(--muted);
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+  background: rgba(15,23,48,0.90);
+}
+
+.blotterTable tbody td {
+  padding: 8px 10px;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+  font-size: 12px;
+}
+
+.blotterTable tbody tr:hover {
+  background: rgba(255,255,255,0.04);
+}
+
 @media (max-width: 1000px) {
+  .main {
+    flex-direction: column;
+  }
+
+  .blotter {
+    width: auto;
+    max-width: none;
+    min-width: 0;
+  }
+
   .grid {
     grid-template-columns: 1fr;
     grid-template-rows: repeat(4, minmax(0, 1fr));

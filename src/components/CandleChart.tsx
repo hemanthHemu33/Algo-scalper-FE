@@ -27,13 +27,7 @@ type Props = {
   intervalMin: number;
 };
 
-export function CandleChart({
-  token,
-  title,
-  candles,
-  trades,
-  intervalMin,
-}: Props) {
+export function CandleChart({ token, title, candles, trades, intervalMin }: Props) {
   const containerRef = React.useRef<HTMLDivElement | null>(null);
   const chartRef = React.useRef<IChartApi | null>(null);
   const candleSeriesRef = React.useRef<ISeriesApi<"Candlestick"> | null>(null);
@@ -154,8 +148,8 @@ export function CandleChart({
     const data = lwCandles as CandlestickData[];
     cs.setData(data);
 
-    // If the user previously dragged the price axis, lightweight-charts can switch to manual scaling.
-    // Re-enable autoscale on new data so the right-side price scale keeps updating.
+    // If the user previously dragged the price scale, autoscale can get disabled.
+    // Re-enable it whenever fresh data arrives so the right-axis price keeps tracking.
     try {
       cs.priceScale().applyOptions({ autoScale: true });
     } catch {

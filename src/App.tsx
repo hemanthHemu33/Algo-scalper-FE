@@ -4,7 +4,9 @@ import { useStatus, useSubscriptions, useTradesRecent } from "./lib/hooks";
 import { postJson } from "./lib/http";
 import { buildKiteLoginUrl, parseKiteRedirect } from "./lib/kiteAuth";
 import { ChartPanel, type ChartConfig } from "./components/ChartPanel";
+import { TradeBlotter } from "./components/TradeBlotter";
 import { useSocketBridge } from "./lib/socket";
+import type { TradeRow } from "./types/backend";
 
 function normalizeBaseUrl(u: string) {
   return u.trim().replace(/\/$/, "");
@@ -12,6 +14,18 @@ function normalizeBaseUrl(u: string) {
 
 const KITE_SESSION_PATH =
   import.meta.env.VITE_KITE_SESSION_PATH || "/admin/kite/session";
+
+function buildTokenLabelsFromTrades(trades: TradeRow[]) {
+  const map: Record<number, string> = {};
+  for (const t of trades || []) {
+    const tok = Number(t.instrument_token);
+    const sym = t.instrument?.tradingsymbol;
+    if (Number.isFinite(tok) && sym && !map[tok]) {
+      map[tok] = String(sym);
+    }
+  }
+  return map;
+}
 
 export default function App() {
   const { settings, setSettings } = useSettings();
@@ -21,12 +35,31 @@ export default function App() {
     settings.kiteApiKey,
   );
 
+  const socketState = useSocketBridge();
   const statusQ = useStatus(2000);
   const subsQ = useSubscriptions(5000);
-  const tradesQ = useTradesRecent(80, 2000);
-  const socketState = useSocketBridge();
+  const tradesQ = useTradesRecent(80, socketState.connected ? false : 2000);
+
   const tokens: number[] = subsQ.data?.tokens || [];
   const trades = tradesQ.data?.rows || [];
+
+  const tokenLabels = React.useMemo(() => {
+    const map = buildTokenLabelsFromTrades(trades);
+
+    // If backend includes activeTrade details, use it too (best-effort).
+    const at: any = statusQ.data?.activeTrade;
+    const tok = Number(at?.instrument_token);
+    const sym = at?.instrument?.tradingsymbol;
+    if (Number.isFinite(tok) && sym && !map[tok]) map[tok] = String(sym);
+
+    return map;
+  }, [trades, statusQ.data?.activeTrade]);
+
+  const serverNowMs = React.useMemo(() => {
+    const nowIso = statusQ.data?.now;
+    const ms = nowIso ? new Date(nowIso).getTime() : NaN;
+    return Number.isFinite(ms) ? ms : Date.now();
+  }, [statusQ.data?.now]);
 
   const [charts, setCharts] = React.useState<ChartConfig[]>(() => [
     { token: null, intervalMin: 1 },
@@ -34,6 +67,8 @@ export default function App() {
     { token: null, intervalMin: 3 },
     { token: null, intervalMin: 3 },
   ]);
+
+  const [blotterLimit, setBlotterLimit] = React.useState<20 | 50>(20);
 
   // Kite login handshake state (optional)
   const [kiteBusy, setKiteBusy] = React.useState(false);
@@ -181,11 +216,7 @@ export default function App() {
           </button>
 
           <span className="pill">
-            {connected
-              ? halted
-                ? "HALTED / KILL"
-                : "CONNECTED"
-              : "DISCONNECTED"}
+            {connected ? (halted ? "HALTED / KILL" : "CONNECTED") : "DISCONNECTED"}
           </span>
 
           <span className={["pill", hasKiteSession ? "good" : "bad"].join(" ")}>
@@ -193,10 +224,7 @@ export default function App() {
           </span>
 
           <span
-            className={[
-              "pill",
-              socketState.connected ? "good" : "bad",
-            ].join(" ")}
+            className={["pill", socketState.connected ? "good" : "bad"].join(" ")}
             title={
               socketState.lastEvent
                 ? `Last socket event: ${socketState.lastEvent}`
@@ -212,11 +240,7 @@ export default function App() {
             disabled={kiteBusy}
             title="Opens the official Kite Connect login page"
           >
-            {kiteBusy
-              ? "Kite…"
-              : hasKiteSession
-                ? "Re-login Kite"
-                : "Login Kite"}
+            {kiteBusy ? "Kite…" : hasKiteSession ? "Re-login Kite" : "Login Kite"}
           </button>
 
           {kiteRequestToken ? (
@@ -231,31 +255,40 @@ export default function App() {
           ) : null}
 
           {kiteErr ? <span className="pill bad">{kiteErr}</span> : null}
-          {!kiteErr && kiteMsg ? (
-            <span className="pill good">{kiteMsg}</span>
-          ) : null}
+          {!kiteErr && kiteMsg ? <span className="pill good">{kiteMsg}</span> : null}
         </div>
       </div>
 
-      <div className="grid">
-        {charts.map((cfg, i) => (
-          <ChartPanel
-            key={i}
-            index={i}
-            config={cfg}
-            tokens={tokens}
-            trades={trades}
-            tradesLoading={tradesQ.isFetching}
-            socketConnected={socketState.connected}
-            onChange={(next) =>
-              setCharts((prev) => {
-                const cp = [...prev];
-                cp[i] = next;
-                return cp;
-              })
-            }
-          />
-        ))}
+      <div className="main">
+        <div className="grid">
+          {charts.map((cfg, i) => (
+            <ChartPanel
+              key={i}
+              index={i}
+              config={cfg}
+              tokens={tokens}
+              tokenLabels={tokenLabels}
+              trades={trades}
+              tradesLoading={tradesQ.isFetching}
+              socketConnected={socketState.connected}
+              serverNowMs={serverNowMs}
+              onChange={(next) =>
+                setCharts((prev) => {
+                  const cp = [...prev];
+                  cp[i] = next;
+                  return cp;
+                })
+              }
+            />
+          ))}
+        </div>
+
+        <TradeBlotter
+          trades={trades}
+          limit={blotterLimit}
+          onLimitChange={setBlotterLimit}
+          tokenLabels={tokenLabels}
+        />
       </div>
     </div>
   );
