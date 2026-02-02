@@ -30,5 +30,10 @@ export function loadSettings(): AppSettings {
 }
 
 export function saveSettings(s: AppSettings) {
-  localStorage.setItem(LS_KEY, JSON.stringify(s));
+  const norm = {
+    baseUrl: (s.baseUrl || "").trim().replace(/\/$/, ""),
+    apiKey: (s.apiKey || "").trim(),
+    kiteApiKey: (s.kiteApiKey || "").trim(),
+  };
+  localStorage.setItem(LS_KEY, JSON.stringify(norm));
 }

@@ -2,10 +2,20 @@ import React from 'react';
 import { CandleChart } from './CandleChart';
 import { useCandles } from '../lib/hooks';
 import type { CandleRow, TradeRow } from '../types/backend';
+import { getLatestOpenTradeForToken } from '../lib/chartUtils';
 
 export type ChartConfig = {
   token: number | null;
   intervalMin: number;
+};
+
+export type FeedHealth = {
+  index: number;
+  token: number | null;
+  intervalMin: number;
+  lastTs: string | null;
+  lagSec: number | null;
+  stale: boolean;
 };
 
 type Props = {
@@ -17,12 +27,15 @@ type Props = {
   tradesLoading: boolean;
   socketConnected: boolean;
   serverNowMs: number;
+  isFocused?: boolean;
+  onFeedHealth?: (h: FeedHealth) => void;
+  panelId?: string;
   onChange: (next: ChartConfig) => void;
 };
 
 function labelForToken(token: number, tokenLabels: Record<number, string>) {
-  const sym = tokenLabels?.[token];
-  return sym ? `${sym} (${token})` : String(token);
+  const pretty = tokenLabels?.[token];
+  return pretty ? String(pretty) : String(token);
 }
 
 function formatLagSeconds(sec: number) {
@@ -34,6 +47,22 @@ function formatLagSeconds(sec: number) {
   return `${m}m ${s}s`;
 }
 
+function computeBreachState(trade: TradeRow | null, ltp: number): 'NORMAL' | 'SL' | 'TGT' {
+  if (!trade || !Number.isFinite(ltp)) return 'NORMAL';
+  const side = (trade.side || '').toUpperCase();
+  const sl = Number(trade.stopLoss);
+  const tgt = Number(trade.targetPrice);
+
+  if (side === 'BUY') {
+    if (Number.isFinite(sl) && ltp <= sl) return 'SL';
+    if (Number.isFinite(tgt) && ltp >= tgt) return 'TGT';
+  } else if (side === 'SELL') {
+    if (Number.isFinite(sl) && ltp >= sl) return 'SL';
+    if (Number.isFinite(tgt) && ltp <= tgt) return 'TGT';
+  }
+  return 'NORMAL';
+}
+
 export function ChartPanel({
   index,
   config,
@@ -43,18 +72,31 @@ export function ChartPanel({
   tradesLoading,
   socketConnected,
   serverNowMs,
+  isFocused,
+  onFeedHealth,
+  panelId,
   onChange,
 }: Props) {
   const [isFullscreen, setIsFullscreen] = React.useState(false);
+  const [overlayN, setOverlayN] = React.useState<number>(0);
+
+  // Even if WS is connected, some backends don't emit candle events over WS.
+  // If we disable polling in that case, charts freeze and you'll see "STALE FEED".
+  // So we keep a lightweight polling fallback and speed it up when we detect lag.
+  const [pollMs, setPollMs] = React.useState<number>(socketConnected ? 5000 : 2500);
+
   const token = config.token;
   const intervalMin = config.intervalMin;
+
+  // Reset polling baseline when the feed mode or chart identity changes.
+  React.useEffect(() => {
+    setPollMs(socketConnected ? 5000 : 2500);
+  }, [socketConnected, token, intervalMin]);
 
   React.useEffect(() => {
     if (!isFullscreen) return;
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        setIsFullscreen(false);
-      }
+      if (event.key === 'Escape') setIsFullscreen(false);
     };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
@@ -69,28 +111,64 @@ export function ChartPanel({
     };
   }, [isFullscreen]);
 
-  const candlesQ = useCandles(token, intervalMin, 320, socketConnected ? false : 2500);
+  const candlesQ = useCandles(token, intervalMin, 320, pollMs);
   const rows: CandleRow[] = candlesQ.data?.rows || [];
 
   const display = token !== null ? labelForToken(token, tokenLabels) : '-';
   const title = `Chart ${index + 1} • ${display} • ${intervalMin}m`;
 
   const errorMsg =
-    (candlesQ.error as any)?.response?.data?.error ||
-    (candlesQ.error as any)?.message ||
-    null;
+    (candlesQ.error as any)?.response?.data?.error || (candlesQ.error as any)?.message || null;
 
   const lastTs = rows.length ? rows[rows.length - 1]?.ts : null;
   const lastMs = lastTs ? new Date(lastTs).getTime() : NaN;
   const lagSec = Number.isFinite(lastMs) ? Math.max(0, (serverNowMs - lastMs) / 1000) : NaN;
 
-  // Treat "stale" as > 2 intervals without updates (handles both partial-bar and completed-bar feeds).
+  // Stale threshold: > 2 intervals behind (plus small grace).
+  const staleCut = intervalMin * 60 * 2 + 15;
   const goodCut = intervalMin * 60 + 8;
-  const warnCut = intervalMin * 60 * 2 + 15;
-  const lagClass = !Number.isFinite(lagSec) ? '' : lagSec <= goodCut ? 'good' : lagSec <= warnCut ? 'warn' : 'bad';
+
+  // Adaptive polling:
+  // - When lag grows (no WS candle updates, or backend slow), speed up polling to catch up.
+  // - When feed is healthy again, return to the baseline cadence.
+  React.useEffect(() => {
+    if (token === null) return;
+    if (!Number.isFinite(lagSec)) return;
+
+    const baseline = socketConnected ? 5000 : 2500;
+    const next =
+      lagSec > staleCut ? 1500 : lagSec > goodCut ? 2500 : baseline;
+
+    if (pollMs !== next) setPollMs(next);
+  }, [token, lagSec, staleCut, goodCut, socketConnected, pollMs]);
+
+  const lagClass = !Number.isFinite(lagSec)
+    ? ''
+    : lagSec <= goodCut
+      ? 'good'
+      : lagSec <= staleCut
+        ? 'warn'
+        : 'bad';
+
+  const ltp = rows.length ? Number(rows[rows.length - 1]?.close) : NaN;
+  const openTrade = token !== null ? getLatestOpenTradeForToken(trades, token) : null;
+  const breach = computeBreachState(openTrade, ltp);
+
+  React.useEffect(() => {
+    if (!onFeedHealth) return;
+    onFeedHealth({
+      index,
+      token,
+      intervalMin,
+      lastTs,
+      lagSec: Number.isFinite(lagSec) ? lagSec : null,
+      stale: Number.isFinite(lagSec) ? lagSec > staleCut : false,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [index, token, intervalMin, lastTs, lagSec, staleCut]);
 
   return (
-    <div className={['panel', isFullscreen ? 'panelFullscreen' : ''].join(' ')}>
+    <div id={panelId} className={['panel', isFullscreen ? 'panelFullscreen' : '', isFocused ? 'panelFocus' : ''].join(' ')}>
       <div className="panelHeader">
         <div className="left">
           <div className="field">
@@ -119,9 +197,7 @@ export function ChartPanel({
             <select
               className="small"
               value={intervalMin}
-              onChange={(e) =>
-                onChange({ ...config, intervalMin: Number(e.target.value) })
-              }
+              onChange={(e) => onChange({ ...config, intervalMin: Number(e.target.value) })}
             >
               <option value={1}>1m</option>
               <option value={3}>3m</option>
@@ -129,37 +205,48 @@ export function ChartPanel({
             </select>
           </div>
 
-          <div className="smallText">
-            {candlesQ.isFetching
-              ? 'updating…'
-              : candlesQ.data
-                ? `candles: ${rows.length}`
-                : 'no data'}
+          <div className="field">
+            <label>Overlay</label>
+            <select
+              className="small"
+              value={overlayN}
+              onChange={(e) => setOverlayN(Number(e.target.value))}
+              title="Show faint ENTRY/SL/TGT levels for last N trades (context). Active trade lines always show."
+            >
+              <option value={0}>Active</option>
+              <option value={3}>Last 3</option>
+              <option value={5}>Last 5</option>
+              <option value={10}>Last 10</option>
+            </select>
           </div>
 
+          <span
+            className={['pill', socketConnected ? 'good' : 'warn'].join(' ')}
+            title={socketConnected ? `WS connected • polling fallback ${pollMs}ms` : `Polling ${pollMs}ms`}
+          >
+            {socketConnected ? 'WS+POLL' : 'POLL'}
+          </span>
+
           {token !== null && rows.length ? (
-            <span
-              className={['pill', lagClass].join(' ')}
-              title={lastTs ? `Last candle ts: ${lastTs}` : 'Last candle ts: n/a'}
-            >
+            <span className={['pill', lagClass].join(' ')} title={lastTs ? `Last candle ts: ${lastTs}` : 'Last candle ts: n/a'}>
               lag: {formatLagSeconds(lagSec)}
             </span>
           ) : null}
+
+          {breach !== 'NORMAL' ? (
+            <span className={['pill', breach === 'SL' ? 'bad' : 'good'].join(' ')} title="Based on latest candle close (proxy for LTP)">
+              {breach === 'SL' ? 'SL BREACH' : 'TGT HIT'}
+            </span>
+          ) : null}
+
+          <div className="smallText">
+            {candlesQ.isFetching ? 'updating…' : candlesQ.data ? `candles: ${rows.length}` : 'no data'}
+          </div>
         </div>
 
         <div className="panelHeaderActions">
-          <div className="smallText">
-            {tradesLoading
-              ? 'trades…'
-              : trades.length
-                ? `trades: ${trades.length}`
-                : ''}
-          </div>
-          <button
-            className="btn small"
-            type="button"
-            onClick={() => setIsFullscreen((prev) => !prev)}
-          >
+          <div className="smallText">{tradesLoading ? 'trades…' : trades.length ? `trades: ${trades.length}` : ''}</div>
+          <button className="btn small" type="button" onClick={() => setIsFullscreen((prev) => !prev)}>
             {isFullscreen ? 'Close' : 'Full screen'}
           </button>
         </div>
@@ -174,12 +261,11 @@ export function ChartPanel({
             candles={rows}
             trades={trades}
             intervalMin={intervalMin}
+            overlayCount={overlayN}
           />
         ) : (
           <div className="panelPlaceholder">
-            {token !== null
-              ? 'Waiting for candles… (need /admin/candles/recent)'
-              : 'Select a token to load candles'}
+            {token !== null ? 'Waiting for candles… (need /admin/candles/recent)' : 'Select a token to load candles'}
           </div>
         )}
       </div>

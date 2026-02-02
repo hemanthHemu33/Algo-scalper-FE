@@ -5,29 +5,25 @@ import type { CandleRow, TradeRow } from '../types/backend';
 const IST_TIME_ZONE = 'Asia/Kolkata';
 
 function toIstDate(time: Time): Date {
-  // `Time` from lightweight-charts can be:
-  // - number (unix seconds)
-  // - string (e.g., '2026-02-02')
-  // - BusinessDay object ({ year, month, day })
   if (typeof time === 'number') {
     return new Date(time * 1000);
   }
 
+  // `Time` can also be a string (e.g. '2026-02-02') or a BusinessDay object.
   if (typeof time === 'string') {
     const d = new Date(time);
     if (!Number.isNaN(d.getTime())) return d;
-
     const n = Number(time);
     if (Number.isFinite(n)) return new Date(n * 1000);
-
     return new Date();
   }
 
   if (time && typeof time === 'object' && 'year' in time) {
-    const bd = time as any;
+    const bd: any = time;
     return new Date(Date.UTC(bd.year, bd.month - 1, bd.day));
   }
 
+  // Fallback (should be rare)
   return new Date();
 }
 
@@ -177,9 +173,43 @@ export function buildTradeMarkers(opts: {
   return markers;
 }
 
+
+function isTradeOpenStatus(status?: string): boolean {
+  const s = (status || '').toUpperCase();
+  // keep this permissive (backends vary): treat OPEN/ACTIVE as open; everything else is closed/unknown
+  return s.includes('OPEN') || s.includes('ACTIVE');
+}
+
+export function getLatestOpenTradeForToken(trades: TradeRow[], token: number): TradeRow | null {
+  const rows = (trades || []).filter(
+    (t) => Number(t.instrument_token) === Number(token) && (isTradeOpenStatus(t.status) || (!t.status && (t.exitPrice === null || t.exitPrice === undefined)))
+  );
+  if (!rows.length) return null;
+  rows.sort(
+    (a, b) =>
+      new Date(b.updatedAt || b.createdAt || 0).getTime() -
+      new Date(a.updatedAt || a.createdAt || 0).getTime()
+  );
+  return rows[0] || null;
+}
+
+export function getLastTradesForToken(trades: TradeRow[], token: number, n: number): TradeRow[] {
+  const rows = (trades || []).filter((t) => Number(t.instrument_token) === Number(token));
+  rows.sort(
+    (a, b) =>
+      new Date(b.updatedAt || b.createdAt || 0).getTime() -
+      new Date(a.updatedAt || a.createdAt || 0).getTime()
+  );
+  return rows.slice(0, Math.max(0, n));
+}
+
+export function isTradeOpen(trade: TradeRow | null | undefined): boolean {
+  return !!trade && isTradeOpenStatus(trade.status);
+}
+
 export function getLatestTradeForToken(trades: TradeRow[], token: number): TradeRow | null {
   const rows = (trades || []).filter((t) => Number(t.instrument_token) === Number(token));
   if (!rows.length) return null;
-  rows.sort((a, b) => new Date(b.createdAt || b.updatedAt || 0).getTime() - new Date(a.createdAt || a.updatedAt || 0).getTime());
+  rows.sort((a, b) => new Date(b.updatedAt || b.createdAt || 0).getTime() - new Date(a.updatedAt || a.createdAt || 0).getTime());
   return rows[0] || null;
 }

@@ -254,29 +254,170 @@ button {
 .blotterTable {
   width: 100%;
   border-collapse: collapse;
+  font-size: 12px;
 }
 
-.blotterTable thead th {
+.blotterTable th,
+.blotterTable td {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+.blotterTable th {
+  text-align: left;
+  color: var(--muted);
+  font-weight: 600;
+  background: rgba(0,0,0,0.10);
   position: sticky;
   top: 0;
   z-index: 1;
-  text-align: left;
-  font-size: 12px;
-  color: var(--muted);
-  padding: 8px 10px;
+}
+
+.sidebarHandle {
+  align-self: center;
+  width: 36px;
+  height: 140px;
+  border-radius: 14px;
+  background: rgba(106,166,255,0.18);
+  border: 1px solid rgba(106,166,255,0.35);
+  color: var(--text);
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+  padding: 10px 6px;
+}
+
+
+/* ===== Pro dashboard additions ===== */
+
+.main {
+  position: relative;
+}
+
+/* Focus highlight when you click a trade row (auto-focus chart) */
+.panelFocus {
+  outline: 2px solid rgba(106,166,255,0.75);
+  outline-offset: 0px;
+  box-shadow: 0 0 0 2px rgba(106,166,255,0.15);
+}
+
+/* Stale feed banner */
+.banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
   border-bottom: 1px solid var(--border);
-  background: rgba(15,23,48,0.90);
-}
-
-.blotterTable tbody td {
-  padding: 8px 10px;
-  border-bottom: 1px solid rgba(255,255,255,0.06);
   font-size: 12px;
+  color: rgba(255,255,255,0.9);
+}
+.banner.bad {
+  background: rgba(255, 107, 107, 0.10);
+}
+.bannerSep {
+  color: rgba(255,255,255,0.45);
+}
+.bannerItem {
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.08);
+}
+.bannerItem:hover {
+  background: rgba(255,255,255,0.10);
 }
 
-.blotterTable tbody tr:hover {
+/* Sidebar wrapper for blotter (open/close like a real sidebar) */
+.blotterShell {
+  width: 420px;
+  max-width: 42vw;
+  min-width: 320px;
+  transition: width 200ms ease, min-width 200ms ease;
+  overflow: hidden;
+}
+.blotterShell.closed {
+  width: 0;
+  min-width: 0;
+  margin-left: -12px;
+}
+.blotterShell.closed .blotter {
+  visibility: hidden;
+}
+
+/* Handle shown when sidebar is closed */
+.blotterHandle {
+  position: absolute;
+  right: 6px;
+  top: 92px;
+  z-index: 20;
+  border: 1px solid var(--border);
+  background: rgba(17,24,51,0.85);
+  color: var(--text);
+  border-radius: 10px;
+  padding: 8px 10px;
+  cursor: pointer;
+}
+.blotterHandle:hover {
+  background: rgba(17,24,51,1);
+}
+
+/* Clickable blotter rows */
+.rowClickable {
+  cursor: pointer;
+}
+.rowClickable:hover td {
   background: rgba(255,255,255,0.04);
 }
+.rowSelected td {
+  background: rgba(106,166,255,0.10) !important;
+}
+
+/* Toasts */
+.toastHost {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  pointer-events: none;
+}
+.toast {
+  pointer-events: auto;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: rgba(15,23,48,0.95);
+  box-shadow: 0 10px 30px rgba(0,0,0,0.25);
+  max-width: 520px;
+  font-size: 12px;
+}
+.toast.good { border-color: rgba(46,229,157,0.35); }
+.toast.warn { border-color: rgba(255,204,102,0.35); }
+.toast.bad { border-color: rgba(255,107,107,0.35); }
+
+.toastMsg {
+  flex: 1;
+  color: rgba(255,255,255,0.92);
+}
+.toastClose {
+  pointer-events: auto;
+  border: none;
+  background: transparent;
+  color: rgba(255,255,255,0.6);
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+}
+.toastClose:hover {
+  color: rgba(255,255,255,0.9);
+}
+
 
 @media (max-width: 1000px) {
   .main {
@@ -287,6 +428,12 @@ button {
     width: auto;
     max-width: none;
     min-width: 0;
+  }
+
+  .sidebarHandle {
+    width: auto;
+    height: auto;
+    writing-mode: horizontal-tb;
   }
 
   .grid {
