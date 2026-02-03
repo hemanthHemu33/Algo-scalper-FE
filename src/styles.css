@@ -31,7 +31,7 @@ button {
 }
 
 .app {
-  height: 100vh;
+  min-height: 100vh;
   display: flex;
   flex-direction: column;
 }
@@ -222,6 +222,24 @@ button {
   display: flex;
   gap: 12px;
   padding: 12px;
+}
+
+.sectionHeader {
+  padding: 12px 12px 0;
+}
+
+.sectionTitle {
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.sectionSubtitle {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.main {
+  min-height: 520px;
 }
 
 .topbar {
