@@ -1,6 +1,27 @@
 import React from "react";
 import { useSettings } from "./lib/settingsContext";
-import { useStatus, useSubscriptions, useTradesRecent } from "./lib/hooks";
+import {
+  useAlertChannels,
+  useAlertIncidents,
+  useAuditLogs,
+  useCostCalibration,
+  useEquity,
+  useExecutionQuality,
+  useFnoUniverse,
+  useMarketCalendar,
+  useMarketHealth,
+  useOptimizerSnapshot,
+  useOrders,
+  usePositions,
+  useRejections,
+  useRiskLimits,
+  useStatus,
+  useStrategyKpis,
+  useSubscriptions,
+  useTelemetrySnapshot,
+  useTradeTelemetrySnapshot,
+  useTradesRecent,
+} from "./lib/hooks";
 import { postJson } from "./lib/http";
 import { buildKiteLoginUrl, parseKiteRedirect } from "./lib/kiteAuth";
 import { ChartPanel, type ChartConfig, type FeedHealth } from "./components/ChartPanel";
@@ -147,6 +168,23 @@ export default function App() {
   // Keep a lightweight poll even when WS is connected: some backends may not emit trade events.
   // Fetch a bigger window so token→symbol learning covers more instruments.
   const tradesQ = useTradesRecent(200, socketState.connected ? 5000 : 2000);
+  const equityQ = useEquity(6000);
+  const positionsQ = usePositions(8000);
+  const ordersQ = useOrders(8000);
+  const riskQ = useRiskLimits(10000);
+  const strategyQ = useStrategyKpis(12000);
+  const executionQ = useExecutionQuality(12000);
+  const marketHealthQ = useMarketHealth(8000);
+  const auditQ = useAuditLogs(15000);
+  const alertChannelsQ = useAlertChannels(20000);
+  const alertIncidentsQ = useAlertIncidents(15000);
+  const telemetryQ = useTelemetrySnapshot(20000);
+  const tradeTelemetryQ = useTradeTelemetrySnapshot(20000);
+  const optimizerQ = useOptimizerSnapshot(20000);
+  const rejectionsQ = useRejections(20000);
+  const costCalibQ = useCostCalibration(30000);
+  const calendarQ = useMarketCalendar(30000);
+  const fnoQ = useFnoUniverse(60000);
 
   const tokens: number[] = subsQ.data?.tokens || [];
   const trades = tradesQ.data?.rows || [];
