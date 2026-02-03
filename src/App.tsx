@@ -75,6 +75,53 @@ function genId() {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
+function fmtNumber(n: number | null | undefined, digits = 2) {
+  if (!Number.isFinite(n as number)) return "-";
+  return Number(n).toFixed(digits);
+}
+
+function fmtCompact(n: number | null | undefined) {
+  if (!Number.isFinite(n as number)) return "-";
+  return new Intl.NumberFormat("en-IN", {
+    notation: "compact",
+    maximumFractionDigits: 2,
+  }).format(Number(n));
+}
+
+function fmtCurrency(n: number | null | undefined) {
+  if (!Number.isFinite(n as number)) return "-";
+  return new Intl.NumberFormat("en-IN", {
+    style: "currency",
+    currency: "INR",
+    maximumFractionDigits: 2,
+  }).format(Number(n));
+}
+
+function fmtPercent(n: number | null | undefined) {
+  if (!Number.isFinite(n as number)) return "-";
+  return `${Number(n).toFixed(1)}%`;
+}
+
+function formatSince(ts?: string | null) {
+  if (!ts) return "-";
+  const ms = new Date(ts).getTime();
+  if (!Number.isFinite(ms)) return "-";
+  const diff = Math.max(0, Date.now() - ms);
+  const min = Math.floor(diff / 60000);
+  if (min < 60) return `${min}m`;
+  const h = Math.floor(min / 60);
+  const m = min % 60;
+  return `${h}h ${m}m`;
+}
+
+function statusBucket(status?: string) {
+  const s = (status || "").toUpperCase();
+  if (s.includes("OPEN") || s.includes("ACTIVE")) return "open";
+  if (s.includes("CLOSED") || s.includes("DONE") || s.includes("EXIT")) return "closed";
+  if (s.includes("REJECT") || s.includes("CANCEL") || s.includes("FAIL")) return "rejected";
+  return "other";
+}
+
 export default function App() {
   const { settings, setSettings } = useSettings();
   const [draftBase, setDraftBase] = React.useState(settings.baseUrl);
@@ -123,6 +170,134 @@ export default function App() {
     const ms = nowIso ? new Date(nowIso).getTime() : NaN;
     return Number.isFinite(ms) ? ms : Date.now();
   }, [statusQ.data?.now]);
+
+  const tradeStats = React.useMemo(() => {
+    const rows = trades || [];
+    const closed = rows.filter((t) => statusBucket(t.status) === "closed");
+    const open = rows.filter((t) => statusBucket(t.status) === "open");
+    const rejected = rows.filter((t) => statusBucket(t.status) === "rejected");
+
+    let pnl = 0;
+    let wins = 0;
+    let losses = 0;
+    let holdMs = 0;
+    let holdCount = 0;
+    let exposure = 0;
+
+    for (const t of rows) {
+      const qty = Number(t.qty);
+      const entry = Number(t.entryPrice);
+      if (Number.isFinite(qty) && Number.isFinite(entry)) {
+        exposure += qty * entry;
+      }
+    }
+
+    for (const t of closed) {
+      const qty = Number(t.qty);
+      const entry = Number(t.entryPrice);
+      const exit = Number(t.exitPrice);
+      const side = (t.side || "").toUpperCase();
+      if (Number.isFinite(qty) && Number.isFinite(entry) && Number.isFinite(exit)) {
+        const raw = side === "SELL" ? (entry - exit) * qty : (exit - entry) * qty;
+        pnl += raw;
+        if (raw >= 0) wins += 1;
+        else losses += 1;
+      }
+
+      const start = t.createdAt ? new Date(t.createdAt).getTime() : NaN;
+      const end = t.updatedAt ? new Date(t.updatedAt).getTime() : NaN;
+      if (Number.isFinite(start) && Number.isFinite(end) && end >= start) {
+        holdMs += end - start;
+        holdCount += 1;
+      }
+    }
+
+    const winRate = closed.length ? (wins / closed.length) * 100 : null;
+    const avgHoldMin = holdCount ? holdMs / holdCount / 60000 : null;
+
+    return {
+      total: rows.length,
+      closed: closed.length,
+      open: open.length,
+      rejected: rejected.length,
+      wins,
+      losses,
+      pnl,
+      winRate,
+      avgHoldMin,
+      exposure,
+    };
+  }, [trades]);
+
+  const strategyStats = React.useMemo(() => {
+    const map = new Map<string, { id: string; count: number; wins: number; pnl: number }>();
+    for (const t of trades || []) {
+      const id = t.strategyId || "unassigned";
+      if (!map.has(id)) map.set(id, { id, count: 0, wins: 0, pnl: 0 });
+      const row = map.get(id)!;
+      row.count += 1;
+      const qty = Number(t.qty);
+      const entry = Number(t.entryPrice);
+      const exit = Number(t.exitPrice);
+      const side = (t.side || "").toUpperCase();
+      if (Number.isFinite(qty) && Number.isFinite(entry) && Number.isFinite(exit)) {
+        const raw = side === "SELL" ? (entry - exit) * qty : (exit - entry) * qty;
+        row.pnl += raw;
+        if (raw >= 0) row.wins += 1;
+      }
+    }
+    return Array.from(map.values())
+      .map((row) => ({
+        ...row,
+        winRate: row.count ? (row.wins / row.count) * 100 : null,
+      }))
+      .sort((a, b) => b.pnl - a.pnl)
+      .slice(0, 6);
+  }, [trades]);
+
+  const instrumentPulse = React.useMemo(() => {
+    const map = new Map<number, { token: number; count: number; pnl: number }>();
+    for (const t of trades || []) {
+      const token = Number(t.instrument_token);
+      if (!Number.isFinite(token)) continue;
+      if (!map.has(token)) map.set(token, { token, count: 0, pnl: 0 });
+      const row = map.get(token)!;
+      row.count += 1;
+      const qty = Number(t.qty);
+      const entry = Number(t.entryPrice);
+      const exit = Number(t.exitPrice);
+      const side = (t.side || "").toUpperCase();
+      if (Number.isFinite(qty) && Number.isFinite(entry) && Number.isFinite(exit)) {
+        const raw = side === "SELL" ? (entry - exit) * qty : (exit - entry) * qty;
+        row.pnl += raw;
+      }
+    }
+    return Array.from(map.values())
+      .sort((a, b) => b.pnl - a.pnl)
+      .slice(0, 5);
+  }, [trades]);
+
+  const recentActivity = React.useMemo(() => {
+    return (trades || [])
+      .slice(0, 6)
+      .map((t) => ({
+        id: t.tradeId,
+        token: Number(t.instrument_token),
+        side: t.side,
+        status: t.status,
+        updatedAt: t.updatedAt || t.createdAt,
+        pnl: (() => {
+          const qty = Number(t.qty);
+          const entry = Number(t.entryPrice);
+          const exit = Number(t.exitPrice);
+          const side = (t.side || "").toUpperCase();
+          if (Number.isFinite(qty) && Number.isFinite(entry) && Number.isFinite(exit)) {
+            return side === "SELL" ? (entry - exit) * qty : (exit - entry) * qty;
+          }
+          return null;
+        })(),
+      }));
+  }, [trades]);
 
   const defaultCharts: ChartConfig[] = React.useMemo(
     () => [
@@ -411,6 +586,230 @@ export default function App() {
           })}
         </div>
       ) : null}
+
+      <div className="overview">
+        <div className="overviewHeader">
+          <div>
+            <div className="overviewTitle">Pro Trading Overview</div>
+            <div className="overviewSubtitle">Real-time performance, risk, and execution health.</div>
+          </div>
+          <div className="overviewChips">
+            <span className={["pill", connected ? "good" : "bad"].join(" ")}>
+              Engine: {connected ? (halted ? "HALTED" : "LIVE") : "OFFLINE"}
+            </span>
+            <span className={["pill", statusQ.data?.tradingEnabled ? "good" : "warn"].join(" ")}>
+              Trading {statusQ.data?.tradingEnabled ? "Enabled" : "Disabled"}
+            </span>
+            <span className={["pill", statusQ.data?.killSwitch ? "bad" : "good"].join(" ")}>
+              Kill Switch {statusQ.data?.killSwitch ? "ON" : "OFF"}
+            </span>
+          </div>
+        </div>
+
+        <div className="overviewGrid">
+          <div className="metricCard">
+            <div className="metricLabel">Realized P&amp;L</div>
+            <div className={["metricValue", tradeStats.pnl >= 0 ? "goodText" : "badText"].join(" ")}>
+              {fmtCurrency(tradeStats.pnl)}
+            </div>
+            <div className="metricMeta">Closed trades: {tradeStats.closed}</div>
+          </div>
+          <div className="metricCard">
+            <div className="metricLabel">Win Rate</div>
+            <div className="metricValue">{fmtPercent(tradeStats.winRate)}</div>
+            <div className="metricMeta">Wins: {tradeStats.wins} • Losses: {tradeStats.losses}</div>
+          </div>
+          <div className="metricCard">
+            <div className="metricLabel">Avg Hold Time</div>
+            <div className="metricValue">{tradeStats.avgHoldMin ? `${tradeStats.avgHoldMin.toFixed(1)}m` : "-"}</div>
+            <div className="metricMeta">Strategy execution speed</div>
+          </div>
+          <div className="metricCard">
+            <div className="metricLabel">Open Exposure</div>
+            <div className="metricValue">{fmtCurrency(tradeStats.exposure)}</div>
+            <div className="metricMeta">Open trades: {tradeStats.open}</div>
+          </div>
+          <div className="metricCard">
+            <div className="metricLabel">Trades Today</div>
+            <div className="metricValue">{fmtCompact(statusQ.data?.tradesToday ?? tradeStats.total)}</div>
+            <div className="metricMeta">Orders placed: {fmtCompact(statusQ.data?.ordersPlacedToday ?? 0)}</div>
+          </div>
+          <div className="metricCard">
+            <div className="metricLabel">Feed Health</div>
+            <div className="metricValue">{staleItems.length ? "Degraded" : "Healthy"}</div>
+            <div className="metricMeta">
+              Worst lag:{" "}
+              {staleItems.length
+                ? fmtLag(staleItems[staleItems.length - 1]?.lagSec ?? null)
+                : fmtLag(Math.max(...Object.values(feedHealth).map((h) => h.lagSec || 0), 0))}
+            </div>
+          </div>
+        </div>
+
+        <div className="overviewPanels">
+          <div className="panel miniPanel">
+            <div className="panelHeader">
+              <div className="left">
+                <div style={{ fontWeight: 700 }}>Active Trade</div>
+                <span className="pill">{statusQ.data?.activeTradeId ? "LIVE" : "NONE"}</span>
+              </div>
+            </div>
+            <div className="panelBody">
+              {statusQ.data?.activeTrade ? (
+                <div className="stackList">
+                  <div>
+                    <span className="stackLabel">Instrument</span>
+                    <div className="stackValue">
+                      {formatPrettyInstrumentFromTradingSymbol(
+                        statusQ.data?.activeTrade?.instrument?.tradingsymbol,
+                      ) || "-"}
+                    </div>
+                  </div>
+                  <div>
+                    <span className="stackLabel">Side</span>
+                    <div className="stackValue">{statusQ.data?.activeTrade?.side || "-"}</div>
+                  </div>
+                  <div>
+                    <span className="stackLabel">Entry</span>
+                    <div className="stackValue">{fmtNumber(statusQ.data?.activeTrade?.entryPrice)}</div>
+                  </div>
+                  <div>
+                    <span className="stackLabel">Stop / Target</span>
+                    <div className="stackValue">
+                      {fmtNumber(statusQ.data?.activeTrade?.stopLoss)} /{" "}
+                      {fmtNumber(statusQ.data?.activeTrade?.targetPrice)}
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="panelPlaceholder">No active trade reported by backend.</div>
+              )}
+            </div>
+          </div>
+
+          <div className="panel miniPanel">
+            <div className="panelHeader">
+              <div className="left">
+                <div style={{ fontWeight: 700 }}>System Health</div>
+                <span className={["pill", socketState.connected ? "good" : "warn"].join(" ")}>
+                  {socketState.connected ? "WS LIVE" : "POLLING"}
+                </span>
+              </div>
+            </div>
+            <div className="panelBody">
+              <div className="stackList">
+                <div>
+                  <span className="stackLabel">Last socket event</span>
+                  <div className="stackValue">{socketState.lastEvent || "—"}</div>
+                </div>
+                <div>
+                  <span className="stackLabel">Last disconnect</span>
+                  <div className="stackValue">{formatSince(statusQ.data?.ticker?.lastDisconnect)}</div>
+                </div>
+                <div>
+                  <span className="stackLabel">Rejected trades</span>
+                  <div className="stackValue">{tradeStats.rejected}</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="panel miniPanel">
+            <div className="panelHeader">
+              <div className="left">
+                <div style={{ fontWeight: 700 }}>Strategy Performance</div>
+                <span className="pill">Top 6</span>
+              </div>
+            </div>
+            <div className="panelBody">
+              {strategyStats.length ? (
+                <table className="miniTable">
+                  <thead>
+                    <tr>
+                      <th>Strategy</th>
+                      <th>Trades</th>
+                      <th>Win %</th>
+                      <th>P&amp;L</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {strategyStats.map((row) => (
+                      <tr key={row.id}>
+                        <td className="mono">{row.id}</td>
+                        <td className="mono">{row.count}</td>
+                        <td className="mono">{fmtPercent(row.winRate)}</td>
+                        <td className={["mono", row.pnl >= 0 ? "goodText" : "badText"].join(" ")}>
+                          {fmtCurrency(row.pnl)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              ) : (
+                <div className="panelPlaceholder">No strategy stats yet.</div>
+              )}
+            </div>
+          </div>
+
+          <div className="panel miniPanel">
+            <div className="panelHeader">
+              <div className="left">
+                <div style={{ fontWeight: 700 }}>Market Pulse</div>
+                <span className="pill">Top symbols</span>
+              </div>
+            </div>
+            <div className="panelBody">
+              {instrumentPulse.length ? (
+                <div className="pulseList">
+                  {instrumentPulse.map((row) => (
+                    <div key={row.token} className="pulseRow">
+                      <div className="pulseSymbol">{labelForToken(row.token, tokenLabels)}</div>
+                      <div className="pulseMeta">{row.count} trades</div>
+                      <div className={["pulseValue", row.pnl >= 0 ? "goodText" : "badText"].join(" ")}>
+                        {fmtCurrency(row.pnl)}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="panelPlaceholder">Awaiting trade flow.</div>
+              )}
+            </div>
+          </div>
+
+          <div className="panel miniPanel wide">
+            <div className="panelHeader">
+              <div className="left">
+                <div style={{ fontWeight: 700 }}>Activity Feed</div>
+                <span className="pill">Latest 6</span>
+              </div>
+            </div>
+            <div className="panelBody">
+              {recentActivity.length ? (
+                <div className="activityList">
+                  {recentActivity.map((row) => (
+                    <div key={row.id} className="activityRow">
+                      <div className="activityMain">
+                        <div className="activityTitle">
+                          {labelForToken(row.token, tokenLabels)} • {row.side || "-"}
+                        </div>
+                        <div className="activityMeta">
+                          {row.status || "status n/a"} • {row.updatedAt ? new Date(row.updatedAt).toLocaleString() : "-"}
+                        </div>
+                      </div>
+                      <div className={["activityValue", row.pnl !== null && row.pnl >= 0 ? "goodText" : "badText"].join(" ")}>
+                        {row.pnl === null ? "-" : fmtCurrency(row.pnl)}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="panelPlaceholder">No activity yet.</div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
 
       <div className="main">
         <div className="grid">
