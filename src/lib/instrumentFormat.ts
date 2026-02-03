@@ -15,6 +15,21 @@ const MONTHS = [
   "Dec",
 ];
 
+const MONTHS_SHORT: Record<string, string> = {
+  JAN: "Jan",
+  FEB: "Feb",
+  MAR: "Mar",
+  APR: "Apr",
+  MAY: "May",
+  JUN: "Jun",
+  JUL: "Jul",
+  AUG: "Aug",
+  SEP: "Sep",
+  OCT: "Oct",
+  NOV: "Nov",
+  DEC: "Dec",
+};
+
 function pad2(n: number) {
   return String(n).padStart(2, "0");
 }
@@ -68,6 +83,29 @@ export function parseTradingSymbol(tradingsymbol?: string | null): ParsedTrading
     const strike = m[5];
     const optType = m[6] as "CE" | "PE";
     const mon = MONTHS[monNum - 1] || "";
+    return { underlying, year, mon, day, strike, optType };
+  }
+
+  // Monthly format: UNDERLYING + YY + MMM + STRIKE + CE|PE
+  const mMonthOnly = ts.match(/^([A-Z]+?)(\d{2})([A-Z]{3})(\d+)(CE|PE)$/);
+  if (mMonthOnly) {
+    const underlying = mMonthOnly[1];
+    const year = mMonthOnly[2];
+    const mon = MONTHS_SHORT[mMonthOnly[3]] || "";
+    const strike = mMonthOnly[4];
+    const optType = mMonthOnly[5] as "CE" | "PE";
+    return { underlying, year, mon, strike, optType };
+  }
+
+  // Weekly format with month letters: UNDERLYING + YY + MMM + DD + STRIKE + CE|PE
+  const mMonthDay = ts.match(/^([A-Z]+?)(\d{2})([A-Z]{3})(\d{2})(\d+)(CE|PE)$/);
+  if (mMonthDay) {
+    const underlying = mMonthDay[1];
+    const year = mMonthDay[2];
+    const mon = MONTHS_SHORT[mMonthDay[3]] || "";
+    const day = pad2(Number(mMonthDay[4]));
+    const strike = mMonthDay[5];
+    const optType = mMonthDay[6] as "CE" | "PE";
     return { underlying, year, mon, day, strike, optType };
   }
 
