@@ -31,9 +31,204 @@ button {
 }
 
 .app {
-  height: 100vh;
+  min-height: 100vh;
   display: flex;
   flex-direction: column;
+}
+
+.overview {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px;
+  border-bottom: 1px solid var(--border);
+  background: linear-gradient(180deg, rgba(10,16,32,0.9), rgba(10,16,32,0.6));
+}
+
+.ops {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px;
+  border-bottom: 1px solid var(--border);
+  background: rgba(10,16,32,0.55);
+}
+
+.opsGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.overviewHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.overviewTitle {
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.overviewSubtitle {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.overviewChips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.overviewGrid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.metricCard {
+  border: 1px solid var(--border);
+  background: rgba(17,24,51,0.65);
+  border-radius: 16px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 96px;
+}
+
+.metricLabel {
+  font-size: 12px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.metricValue {
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.metricMeta {
+  font-size: 12px;
+  color: rgba(255,255,255,0.7);
+}
+
+.overviewPanels {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.miniPanel {
+  min-height: 220px;
+}
+
+.miniPanel.wide {
+  grid-column: span 2;
+}
+
+.panelBody {
+  padding: 12px;
+}
+
+.stackList {
+  display: grid;
+  gap: 10px;
+}
+
+.stackLabel {
+  font-size: 11px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.stackValue {
+  font-size: 14px;
+  margin-top: 2px;
+}
+
+.miniTable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.miniTable th,
+.miniTable td {
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.miniTable th {
+  text-align: left;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.pulseList {
+  display: grid;
+  gap: 10px;
+}
+
+.pulseRow {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr 1fr;
+  gap: 8px;
+  align-items: center;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: rgba(0,0,0,0.15);
+}
+
+.pulseSymbol {
+  font-weight: 600;
+}
+
+.pulseMeta {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.pulseValue {
+  font-size: 13px;
+  text-align: right;
+}
+
+.activityList {
+  display: grid;
+  gap: 10px;
+}
+
+.activityRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 10px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: rgba(0,0,0,0.15);
+}
+
+.activityTitle {
+  font-weight: 600;
+}
+
+.activityMeta {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.activityValue {
+  font-size: 13px;
+  min-width: 90px;
+  text-align: right;
 }
 
 .main {
@@ -42,6 +237,24 @@ button {
   display: flex;
   gap: 12px;
   padding: 12px;
+}
+
+.sectionHeader {
+  padding: 12px 12px 0;
+}
+
+.sectionTitle {
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.sectionSubtitle {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.main {
+  min-height: 520px;
 }
 
 .topbar {
@@ -420,6 +633,22 @@ button {
 
 
 @media (max-width: 1000px) {
+  .opsGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .overviewGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .overviewPanels {
+    grid-template-columns: 1fr;
+  }
+
+  .miniPanel.wide {
+    grid-column: span 1;
+  }
+
   .main {
     flex-direction: column;
   }
