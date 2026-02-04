@@ -25,14 +25,26 @@ import {
 } from "./lib/hooks";
 import { postJson } from "./lib/http";
 import { buildKiteLoginUrl, parseKiteRedirect } from "./lib/kiteAuth";
-import { ChartPanel, type ChartConfig, type FeedHealth } from "./components/ChartPanel";
+import {
+  ChartPanel,
+  type ChartConfig,
+  type FeedHealth,
+} from "./components/ChartPanel";
 import { TradeBlotter } from "./components/TradeBlotter";
 import { useSocketBridge } from "./lib/socket";
-import { formatPrettyInstrumentFromTrade, formatPrettyInstrumentFromTradingSymbol } from "./lib/instrumentFormat";
+import {
+  formatPrettyInstrumentFromTrade,
+  formatPrettyInstrumentFromTradingSymbol,
+} from "./lib/instrumentFormat";
 import type { TradeRow } from "./types/backend";
 
 type ToastLevel = "good" | "warn" | "bad";
-type Toast = { id: string; level: ToastLevel; message: string; createdAt: number };
+type Toast = {
+  id: string;
+  level: ToastLevel;
+  message: string;
+  createdAt: number;
+};
 
 const LAYOUT_KEY = "kite_scalper_dashboard_layout_v1";
 
@@ -44,7 +56,11 @@ type SavedLayout = {
 
 type DateRangeKey = "1D" | "7D" | "30D" | "90D" | "ALL";
 
-const DATE_RANGE_OPTIONS: Array<{ key: DateRangeKey; label: string; days: number | null }> = [
+const DATE_RANGE_OPTIONS: Array<{
+  key: DateRangeKey;
+  label: string;
+  days: number | null;
+}> = [
   { key: "1D", label: "1D", days: 1 },
   { key: "7D", label: "7D", days: 7 },
   { key: "30D", label: "30D", days: 30 },
@@ -148,7 +164,8 @@ function formatSince(ts?: string | null) {
 
 function severityClass(sev?: string) {
   const s = (sev || "").toLowerCase();
-  if (s.includes("crit") || s.includes("high") || s.includes("sev")) return "bad";
+  if (s.includes("crit") || s.includes("high") || s.includes("sev"))
+    return "bad";
   if (s.includes("warn")) return "warn";
   if (s.includes("info") || s.includes("low")) return "good";
   return "";
@@ -157,8 +174,10 @@ function severityClass(sev?: string) {
 function statusBucket(status?: string) {
   const s = (status || "").toUpperCase();
   if (s.includes("OPEN") || s.includes("ACTIVE")) return "open";
-  if (s.includes("CLOSED") || s.includes("DONE") || s.includes("EXIT")) return "closed";
-  if (s.includes("REJECT") || s.includes("CANCEL") || s.includes("FAIL")) return "rejected";
+  if (s.includes("CLOSED") || s.includes("DONE") || s.includes("EXIT"))
+    return "closed";
+  if (s.includes("REJECT") || s.includes("CANCEL") || s.includes("FAIL"))
+    return "rejected";
   return "other";
 }
 
@@ -187,7 +206,11 @@ function calcTradeStats(rows: TradeRow[]) {
     const entry = Number(t.entryPrice);
     const exit = Number(t.exitPrice);
     const side = (t.side || "").toUpperCase();
-    if (Number.isFinite(qty) && Number.isFinite(entry) && Number.isFinite(exit)) {
+    if (
+      Number.isFinite(qty) &&
+      Number.isFinite(entry) &&
+      Number.isFinite(exit)
+    ) {
       const raw = side === "SELL" ? (entry - exit) * qty : (exit - entry) * qty;
       pnl += raw;
       if (raw >= 0) wins += 1;
@@ -223,7 +246,9 @@ export default function App() {
   const { settings, setSettings } = useSettings();
   const [draftBase, setDraftBase] = React.useState(settings.baseUrl);
   const [draftKey, setDraftKey] = React.useState(settings.apiKey);
-  const [draftKiteApiKey, setDraftKiteApiKey] = React.useState(settings.kiteApiKey);
+  const [draftKiteApiKey, setDraftKiteApiKey] = React.useState(
+    settings.kiteApiKey,
+  );
 
   const [toasts, setToasts] = React.useState<Toast[]>([]);
 
@@ -294,7 +319,9 @@ export default function App() {
   const [dateRange, setDateRange] = React.useState<DateRangeKey>("ALL");
 
   const rangeConfig = React.useMemo(
-    () => DATE_RANGE_OPTIONS.find((opt) => opt.key === dateRange) || DATE_RANGE_OPTIONS[0],
+    () =>
+      DATE_RANGE_OPTIONS.find((opt) => opt.key === dateRange) ||
+      DATE_RANGE_OPTIONS[0],
     [dateRange],
   );
 
@@ -320,7 +347,14 @@ export default function App() {
   }, [alertIncidents, rangeStartMs]);
 
   const alertIncidentStats = React.useMemo(() => {
-    const counts = { total: 0, critical: 0, high: 0, warn: 0, info: 0, other: 0 };
+    const counts = {
+      total: 0,
+      critical: 0,
+      high: 0,
+      warn: 0,
+      info: 0,
+      other: 0,
+    };
     for (const incident of filteredAlertIncidents || []) {
       counts.total += 1;
       const sev = (incident.severity || "").toLowerCase();
@@ -359,14 +393,23 @@ export default function App() {
       .slice(0, 5);
   }, [auditRows]);
 
-  const filteredTradeStats = React.useMemo(() => calcTradeStats(filteredTrades), [filteredTrades]);
+  const filteredTradeStats = React.useMemo(
+    () => calcTradeStats(filteredTrades),
+    [filteredTrades],
+  );
   const allTradeStats = React.useMemo(() => calcTradeStats(trades), [trades]);
 
-  const remainingTradeCount = Math.max(0, allTradeStats.total - filteredTradeStats.total);
+  const remainingTradeCount = Math.max(
+    0,
+    allTradeStats.total - filteredTradeStats.total,
+  );
   const remainingPnl = allTradeStats.pnl - filteredTradeStats.pnl;
 
   const strategyStats = React.useMemo(() => {
-    const map = new Map<string, { id: string; count: number; wins: number; pnl: number }>();
+    const map = new Map<
+      string,
+      { id: string; count: number; wins: number; pnl: number }
+    >();
     for (const t of filteredTrades || []) {
       const id = t.strategyId || "unassigned";
       if (!map.has(id)) map.set(id, { id, count: 0, wins: 0, pnl: 0 });
@@ -376,8 +419,13 @@ export default function App() {
       const entry = Number(t.entryPrice);
       const exit = Number(t.exitPrice);
       const side = (t.side || "").toUpperCase();
-      if (Number.isFinite(qty) && Number.isFinite(entry) && Number.isFinite(exit)) {
-        const raw = side === "SELL" ? (entry - exit) * qty : (exit - entry) * qty;
+      if (
+        Number.isFinite(qty) &&
+        Number.isFinite(entry) &&
+        Number.isFinite(exit)
+      ) {
+        const raw =
+          side === "SELL" ? (entry - exit) * qty : (exit - entry) * qty;
         row.pnl += raw;
         if (raw >= 0) row.wins += 1;
       }
@@ -392,7 +440,10 @@ export default function App() {
   }, [filteredTrades]);
 
   const instrumentPulse = React.useMemo(() => {
-    const map = new Map<number, { token: number; count: number; pnl: number }>();
+    const map = new Map<
+      number,
+      { token: number; count: number; pnl: number }
+    >();
     for (const t of filteredTrades || []) {
       const token = Number(t.instrument_token);
       if (!Number.isFinite(token)) continue;
@@ -403,8 +454,13 @@ export default function App() {
       const entry = Number(t.entryPrice);
       const exit = Number(t.exitPrice);
       const side = (t.side || "").toUpperCase();
-      if (Number.isFinite(qty) && Number.isFinite(entry) && Number.isFinite(exit)) {
-        const raw = side === "SELL" ? (entry - exit) * qty : (exit - entry) * qty;
+      if (
+        Number.isFinite(qty) &&
+        Number.isFinite(entry) &&
+        Number.isFinite(exit)
+      ) {
+        const raw =
+          side === "SELL" ? (entry - exit) * qty : (exit - entry) * qty;
         row.pnl += raw;
       }
     }
@@ -414,25 +470,27 @@ export default function App() {
   }, [filteredTrades]);
 
   const recentActivity = React.useMemo(() => {
-    return (filteredTrades || [])
-      .slice(0, 6)
-      .map((t) => ({
-        id: t.tradeId,
-        token: Number(t.instrument_token),
-        side: t.side,
-        status: t.status,
-        updatedAt: t.updatedAt || t.createdAt,
-        pnl: (() => {
-          const qty = Number(t.qty);
-          const entry = Number(t.entryPrice);
-          const exit = Number(t.exitPrice);
-          const side = (t.side || "").toUpperCase();
-          if (Number.isFinite(qty) && Number.isFinite(entry) && Number.isFinite(exit)) {
-            return side === "SELL" ? (entry - exit) * qty : (exit - entry) * qty;
-          }
-          return null;
-        })(),
-      }));
+    return (filteredTrades || []).slice(0, 6).map((t) => ({
+      id: t.tradeId,
+      token: Number(t.instrument_token),
+      side: t.side,
+      status: t.status,
+      updatedAt: t.updatedAt || t.createdAt,
+      pnl: (() => {
+        const qty = Number(t.qty);
+        const entry = Number(t.entryPrice);
+        const exit = Number(t.exitPrice);
+        const side = (t.side || "").toUpperCase();
+        if (
+          Number.isFinite(qty) &&
+          Number.isFinite(entry) &&
+          Number.isFinite(exit)
+        ) {
+          return side === "SELL" ? (entry - exit) * qty : (exit - entry) * qty;
+        }
+        return null;
+      })(),
+    }));
   }, [filteredTrades]);
 
   const defaultCharts: ChartConfig[] = React.useMemo(
@@ -442,19 +500,26 @@ export default function App() {
       { token: null, intervalMin: 3 },
       { token: null, intervalMin: 3 },
     ],
-    []
+    [],
   );
 
   const [charts, setCharts] = React.useState<ChartConfig[]>(() => {
     const c = saved.charts;
     if (Array.isArray(c) && c.length === 4) {
-      return c.map((x) => ({ token: x?.token ?? null, intervalMin: Number(x?.intervalMin || 1) })) as any;
+      return c.map((x) => ({
+        token: x?.token ?? null,
+        intervalMin: Number(x?.intervalMin || 1),
+      })) as any;
     }
     return defaultCharts;
   });
 
-  const [blotterLimit, setBlotterLimit] = React.useState<20 | 50>(() => (saved.blotterLimit === 50 ? 50 : 20));
-  const [blotterOpen, setBlotterOpen] = React.useState(() => (saved.blotterOpen === false ? false : true));
+  const [blotterLimit, setBlotterLimit] = React.useState<20 | 50>(() =>
+    saved.blotterLimit === 50 ? 50 : 20,
+  );
+  const [blotterOpen, setBlotterOpen] = React.useState(() =>
+    saved.blotterOpen === false ? false : true,
+  );
 
   // Persist layout so refresh doesn't wipe your charts.
   React.useEffect(() => {
@@ -472,10 +537,14 @@ export default function App() {
   }, [defaultCharts, pushToast]);
 
   const [selectedToken, setSelectedToken] = React.useState<number | null>(null);
-  const [focusedChartIndex, setFocusedChartIndex] = React.useState<number | null>(null);
+  const [focusedChartIndex, setFocusedChartIndex] = React.useState<
+    number | null
+  >(null);
   const focusTimerRef = React.useRef<number | null>(null);
 
-  const [feedHealth, setFeedHealth] = React.useState<Record<number, FeedHealth>>({});
+  const [feedHealth, setFeedHealth] = React.useState<
+    Record<number, FeedHealth>
+  >({});
   const staleRef = React.useRef<Record<number, boolean>>({});
 
   const onFeedHealthReport = React.useCallback(
@@ -487,7 +556,10 @@ export default function App() {
 
       if (!wasStale && isStale && h.token !== null) {
         const label = labelForToken(h.token, tokenLabels);
-        pushToast("bad", `Stale feed: Chart ${h.index + 1} • ${label} • lag ${fmtLag(h.lagSec)}`);
+        pushToast(
+          "bad",
+          `Stale feed: Chart ${h.index + 1} • ${label} • lag ${fmtLag(h.lagSec)}`,
+        );
       }
 
       staleRef.current[h.index] = isStale;
@@ -521,7 +593,10 @@ export default function App() {
       }, 0);
 
       if (focusTimerRef.current) window.clearTimeout(focusTimerRef.current);
-      focusTimerRef.current = window.setTimeout(() => setFocusedChartIndex(null), 2200) as any;
+      focusTimerRef.current = window.setTimeout(
+        () => setFocusedChartIndex(null),
+        2200,
+      ) as any;
     },
     [charts],
   );
@@ -531,7 +606,9 @@ export default function App() {
     if (!tokens.length) return;
     setCharts((prev) => {
       const next = [...prev];
-      const used = new Set(next.map((c) => c.token).filter(Boolean) as number[]);
+      const used = new Set(
+        next.map((c) => c.token).filter(Boolean) as number[],
+      );
       for (let i = 0; i < next.length; i += 1) {
         if (next[i].token) continue;
         const pick = tokens.find((t) => !used.has(t));
@@ -548,12 +625,21 @@ export default function App() {
   const [kiteBusy, setKiteBusy] = React.useState(false);
   const [kiteMsg, setKiteMsg] = React.useState<string | null>(null);
   const [kiteErr, setKiteErr] = React.useState<string | null>(null);
-  const [kiteRequestToken, setKiteRequestToken] = React.useState<string | null>(null);
+  const [kiteRequestToken, setKiteRequestToken] = React.useState<string | null>(
+    null,
+  );
   const [killBusy, setKillBusy] = React.useState(false);
-  const [actionBusy, setActionBusy] = React.useState<Record<string, boolean>>({});
+  const [actionBusy, setActionBusy] = React.useState<Record<string, boolean>>(
+    {},
+  );
 
   const runAction = React.useCallback(
-    async <T,>(key: string, label: string, fn: () => Promise<T>, onSuccess?: (res: T) => void) => {
+    async <T,>(
+      key: string,
+      label: string,
+      fn: () => Promise<T>,
+      onSuccess?: (res: T) => void,
+    ) => {
       setActionBusy((prev) => ({ ...prev, [key]: true }));
       try {
         const res: any = await fn();
@@ -652,15 +738,19 @@ export default function App() {
     const nextEnabled = !killSwitchEnabled;
     setKillBusy(true);
     try {
-      const res = await postJson<{ ok?: boolean; kill?: boolean; error?: string }>(
-        settings,
-        `/admin/kill?enabled=${nextEnabled}`,
-      );
+      const res = await postJson<{
+        ok?: boolean;
+        kill?: boolean;
+        error?: string;
+      }>(settings, `/admin/kill?enabled=${nextEnabled}`);
       if (res?.ok === false) {
         throw new Error(res?.error || "Kill switch request failed.");
       }
       const nextKill = typeof res?.kill === "boolean" ? res.kill : nextEnabled;
-      pushToast(nextKill ? "bad" : "good", nextKill ? "Kill switch enabled." : "Kill switch disabled.");
+      pushToast(
+        nextKill ? "bad" : "good",
+        nextKill ? "Kill switch enabled." : "Kill switch disabled.",
+      );
       statusQ.refetch();
     } catch (err: any) {
       pushToast("bad", err?.message || "Kill switch request failed.");
@@ -674,13 +764,19 @@ export default function App() {
   const criticalOk = criticalHealthQ.data?.ok ?? null;
 
   const handleHaltReset = () =>
-    runAction("haltReset", "Reset halt", () => postJson(settings, "/admin/halt/reset"), () =>
-      statusQ.refetch(),
+    runAction(
+      "haltReset",
+      "Reset halt",
+      () => postJson(settings, "/admin/halt/reset"),
+      () => statusQ.refetch(),
     );
 
   const handleCalendarReload = () =>
-    runAction("calendarReload", "Reload market calendar", () => postJson(settings, "/admin/market/calendar/reload"), () =>
-      calendarQ.refetch(),
+    runAction(
+      "calendarReload",
+      "Reload market calendar",
+      () => postJson(settings, "/admin/market/calendar/reload"),
+      () => calendarQ.refetch(),
     );
 
   const handleRetentionEnsure = () =>
@@ -697,23 +793,35 @@ export default function App() {
     );
 
   const handleOptimizerReload = () =>
-    runAction("optimizerReload", "Reload optimizer", () => postJson(settings, "/admin/optimizer/reload"), () =>
-      optimizerQ.refetch(),
+    runAction(
+      "optimizerReload",
+      "Reload optimizer",
+      () => postJson(settings, "/admin/optimizer/reload"),
+      () => optimizerQ.refetch(),
     );
 
   const handleOptimizerFlush = () =>
-    runAction("optimizerFlush", "Flush optimizer", () => postJson(settings, "/admin/optimizer/flush"), () =>
-      optimizerQ.refetch(),
+    runAction(
+      "optimizerFlush",
+      "Flush optimizer",
+      () => postJson(settings, "/admin/optimizer/flush"),
+      () => optimizerQ.refetch(),
     );
 
   const handleOptimizerReset = () =>
-    runAction("optimizerReset", "Reset optimizer", () => postJson(settings, "/admin/optimizer/reset"), () =>
-      optimizerQ.refetch(),
+    runAction(
+      "optimizerReset",
+      "Reset optimizer",
+      () => postJson(settings, "/admin/optimizer/reset"),
+      () => optimizerQ.refetch(),
     );
 
   const handleTelemetryFlush = () =>
-    runAction("telemetryFlush", "Flush telemetry", () => postJson(settings, "/admin/telemetry/flush"), () =>
-      telemetryQ.refetch(),
+    runAction(
+      "telemetryFlush",
+      "Flush telemetry",
+      () => postJson(settings, "/admin/telemetry/flush"),
+      () => telemetryQ.refetch(),
     );
 
   const handleTradeTelemetryFlush = () =>
@@ -734,11 +842,18 @@ export default function App() {
     );
 
   const handleDbPurge = () => {
+    console.clear();
+    console.log(
+      "%cDATABASE PURGE INITIATED",
+      "color: red; font-size: 20px; font-weight: bold;",
+    );
     if (!connected) {
       pushToast("warn", "Connect to backend before purging the database.");
       return;
     }
-    const confirmation = window.prompt('This will delete Mongo data. Type "PURGE" to confirm.');
+    const confirmation = window.prompt(
+      'This will delete Mongo data. Type "PURGE" to confirm.',
+    );
     if (confirmation !== "PURGE") {
       pushToast("warn", "Database purge cancelled.");
       return;
@@ -758,7 +873,12 @@ export default function App() {
     <div className="app">
       <div className="topbar">
         <div className="brand">
-          <span className={["statusDot", connected ? (halted ? "bad" : "good") : ""].join(" ")} />
+          <span
+            className={[
+              "statusDot",
+              connected ? (halted ? "bad" : "good") : "",
+            ].join(" ")}
+          />
           <span>Kite Scalper Dashboard</span>
           <span className="pill">2×2 charts</span>
           <span className="pill">signals → markers (trades)</span>
@@ -795,7 +915,12 @@ export default function App() {
             Save
           </button>
 
-          <button className="btn" type="button" onClick={resetLayout} title="Reset charts + blotter layout to default">
+          <button
+            className="btn"
+            type="button"
+            onClick={resetLayout}
+            title="Reset charts + blotter layout to default"
+          >
             Reset layout
           </button>
 
@@ -806,46 +931,91 @@ export default function App() {
             disabled={killBusy || !connected}
             title="Toggle kill switch on backend"
           >
-            {killBusy ? "Updating…" : killSwitchEnabled ? "Disable Kill Switch" : "Enable Kill Switch"}
+            {killBusy
+              ? "Updating…"
+              : killSwitchEnabled
+                ? "Disable Kill Switch"
+                : "Enable Kill Switch"}
           </button>
 
-          <span className="pill">{connected ? (halted ? "HALTED / KILL" : "CONNECTED") : "DISCONNECTED"}</span>
+          <span className="pill">
+            {connected
+              ? halted
+                ? "HALTED / KILL"
+                : "CONNECTED"
+              : "DISCONNECTED"}
+          </span>
 
           <span className={["pill", hasKiteSession ? "good" : "bad"].join(" ")}>
             {hasKiteSession ? "KITE: LOGGED IN" : "KITE: LOGIN REQUIRED"}
           </span>
 
           <span
-            className={["pill", socketState.connected ? "good" : "warn"].join(" ")}
-            title={socketState.lastEvent ? `Last socket event: ${socketState.lastEvent}` : "Socket events pending"}
+            className={["pill", socketState.connected ? "good" : "warn"].join(
+              " ",
+            )}
+            title={
+              socketState.lastEvent
+                ? `Last socket event: ${socketState.lastEvent}`
+                : "Socket events pending"
+            }
           >
             {socketState.connected ? "WS: CONNECTED" : "WS: OFFLINE"}
           </span>
 
-          <span className={["pill", socketState.connected ? "good" : "warn"].join(" ")} title="Data source mode">
+          <span
+            className={["pill", socketState.connected ? "good" : "warn"].join(
+              " ",
+            )}
+            title="Data source mode"
+          >
             DATA: {socketState.connected ? "WS" : "POLL"}
           </span>
 
-          <button className="btn" onClick={() => setBlotterOpen((v) => !v)} title="Toggle trade blotter sidebar">
+          <button
+            className="btn"
+            onClick={() => setBlotterOpen((v) => !v)}
+            title="Toggle trade blotter sidebar"
+          >
             {blotterOpen ? "Hide blotter" : "Show blotter"}
           </button>
 
-          <button className="btn" onClick={onKiteLogin} disabled={kiteBusy} title="Opens the official Kite Connect login page">
-            {kiteBusy ? "Kite…" : hasKiteSession ? "Re-login Kite" : "Login Kite"}
+          <button
+            className="btn"
+            onClick={onKiteLogin}
+            disabled={kiteBusy}
+            title="Opens the official Kite Connect login page"
+          >
+            {kiteBusy
+              ? "Kite…"
+              : hasKiteSession
+                ? "Re-login Kite"
+                : "Login Kite"}
           </button>
 
-          <button className="btn danger" onClick={handleDbPurge} title="Delete Mongo data via /admin/db/purge">
+          <button
+            className="btn danger"
+            onClick={handleDbPurge}
+            title="Delete Mongo data via /admin/db/purge"
+          >
             Purge DB
           </button>
 
           {kiteRequestToken ? (
-            <button className="btn" onClick={copyRequestToken} disabled={kiteBusy} title="Copy request_token (only if redirect_url points to FE)">
+            <button
+              className="btn"
+              onClick={copyRequestToken}
+              disabled={kiteBusy}
+              title="Copy request_token (only if redirect_url points to FE)"
+            >
               Copy request_token
             </button>
           ) : null}
 
           {kiteErr ? <span className="pill bad">{kiteErr}</span> : null}
-          {!kiteErr && kiteMsg ? <span className="pill good">{kiteMsg}</span> : null}
+          {!kiteErr && kiteMsg ? (
+            <span className="pill good">{kiteMsg}</span>
+          ) : null}
         </div>
       </div>
 
@@ -854,9 +1024,15 @@ export default function App() {
           <strong>STALE FEED</strong>
           <span className="bannerSep">•</span>
           {staleItems.map((h) => {
-            const label = h.token !== null ? labelForToken(h.token, tokenLabels) : "-";
+            const label =
+              h.token !== null ? labelForToken(h.token, tokenLabels) : "-";
             return (
-              <span key={h.index} className="bannerItem" onClick={() => (h.token !== null ? focusToken(h.token) : null)} title="Click to focus chart">
+              <span
+                key={h.index}
+                className="bannerItem"
+                onClick={() => (h.token !== null ? focusToken(h.token) : null)}
+                title="Click to focus chart"
+              >
                 Chart {h.index + 1}: {label} (lag {fmtLag(h.lagSec)})
               </span>
             );
@@ -868,16 +1044,28 @@ export default function App() {
         <div className="overviewHeader">
           <div>
             <div className="overviewTitle">Pro Trading Overview</div>
-            <div className="overviewSubtitle">Real-time performance, risk, and execution health.</div>
+            <div className="overviewSubtitle">
+              Real-time performance, risk, and execution health.
+            </div>
           </div>
           <div className="overviewChips">
             <span className={["pill", connected ? "good" : "bad"].join(" ")}>
               Engine: {connected ? (halted ? "HALTED" : "LIVE") : "OFFLINE"}
             </span>
-            <span className={["pill", statusQ.data?.tradingEnabled ? "good" : "warn"].join(" ")}>
+            <span
+              className={[
+                "pill",
+                statusQ.data?.tradingEnabled ? "good" : "warn",
+              ].join(" ")}
+            >
               Trading {statusQ.data?.tradingEnabled ? "Enabled" : "Disabled"}
             </span>
-            <span className={["pill", statusQ.data?.killSwitch ? "bad" : "good"].join(" ")}>
+            <span
+              className={[
+                "pill",
+                statusQ.data?.killSwitch ? "bad" : "good",
+              ].join(" ")}
+            >
               Kill Switch {statusQ.data?.killSwitch ? "ON" : "OFF"}
             </span>
           </div>
@@ -887,7 +1075,11 @@ export default function App() {
           <div className="rangeControls">
             <div className="field">
               <label>Date range</label>
-              <select className="small" value={dateRange} onChange={(e) => setDateRange(e.target.value as DateRangeKey)}>
+              <select
+                className="small"
+                value={dateRange}
+                onChange={(e) => setDateRange(e.target.value as DateRangeKey)}
+              >
                 {DATE_RANGE_OPTIONS.map((opt) => (
                   <option key={opt.key} value={opt.key}>
                     {opt.label}
@@ -896,65 +1088,104 @@ export default function App() {
               </select>
             </div>
             <span className="rangeHint">
-              Showing trades updated within {rangeConfig.days ? `last ${rangeConfig.days}d` : "all time"}.
+              Showing trades updated within{" "}
+              {rangeConfig.days ? `last ${rangeConfig.days}d` : "all time"}.
             </span>
           </div>
           <div className="rangeSummary">
             <span className="pill">
-              Trades in range: {filteredTradeStats.total} / {allTradeStats.total}
+              Trades in range: {filteredTradeStats.total} /{" "}
+              {allTradeStats.total}
             </span>
-            <span className={["pill", filteredTradeStats.pnl >= 0 ? "good" : "bad"].join(" ")}>
+            <span
+              className={[
+                "pill",
+                filteredTradeStats.pnl >= 0 ? "good" : "bad",
+              ].join(" ")}
+            >
               Range P&amp;L {fmtCurrency(filteredTradeStats.pnl)}
             </span>
-            <span className={["pill", remainingPnl >= 0 ? "good" : "bad"].join(" ")}>
+            <span
+              className={["pill", remainingPnl >= 0 ? "good" : "bad"].join(" ")}
+            >
               Remaining P&amp;L {fmtCurrency(remainingPnl)}
             </span>
-            <span className="pill">Outside range: {remainingTradeCount} trades</span>
+            <span className="pill">
+              Outside range: {remainingTradeCount} trades
+            </span>
           </div>
         </div>
 
         <div className="overviewGrid">
           <div className="metricCard">
             <div className="metricLabel">Realized P&amp;L</div>
-            <div className={["metricValue", filteredTradeStats.pnl >= 0 ? "goodText" : "badText"].join(" ")}>
+            <div
+              className={[
+                "metricValue",
+                filteredTradeStats.pnl >= 0 ? "goodText" : "badText",
+              ].join(" ")}
+            >
               {fmtCurrency(filteredTradeStats.pnl)}
             </div>
             <div className="metricMeta">
-              Closed trades: {filteredTradeStats.closed} • Range: {rangeConfig.label}
+              Closed trades: {filteredTradeStats.closed} • Range:{" "}
+              {rangeConfig.label}
             </div>
           </div>
           <div className="metricCard">
             <div className="metricLabel">Win Rate</div>
-            <div className="metricValue">{fmtPercent(filteredTradeStats.winRate)}</div>
+            <div className="metricValue">
+              {fmtPercent(filteredTradeStats.winRate)}
+            </div>
             <div className="metricMeta">
-              Wins: {filteredTradeStats.wins} • Losses: {filteredTradeStats.losses}
+              Wins: {filteredTradeStats.wins} • Losses:{" "}
+              {filteredTradeStats.losses}
             </div>
           </div>
           <div className="metricCard">
             <div className="metricLabel">Avg Hold Time</div>
             <div className="metricValue">
-              {filteredTradeStats.avgHoldMin ? `${filteredTradeStats.avgHoldMin.toFixed(1)}m` : "-"}
+              {filteredTradeStats.avgHoldMin
+                ? `${filteredTradeStats.avgHoldMin.toFixed(1)}m`
+                : "-"}
             </div>
             <div className="metricMeta">Strategy execution speed</div>
           </div>
           <div className="metricCard">
             <div className="metricLabel">Open Exposure</div>
-            <div className="metricValue">{fmtCurrency(filteredTradeStats.exposure)}</div>
-            <div className="metricMeta">Open trades: {filteredTradeStats.open}</div>
+            <div className="metricValue">
+              {fmtCurrency(filteredTradeStats.exposure)}
+            </div>
+            <div className="metricMeta">
+              Open trades: {filteredTradeStats.open}
+            </div>
           </div>
           <div className="metricCard">
             <div className="metricLabel">Trades Today</div>
-            <div className="metricValue">{fmtCompact(statusQ.data?.tradesToday ?? filteredTradeStats.total)}</div>
-            <div className="metricMeta">Orders placed: {fmtCompact(statusQ.data?.ordersPlacedToday ?? 0)}</div>
+            <div className="metricValue">
+              {fmtCompact(
+                statusQ.data?.tradesToday ?? filteredTradeStats.total,
+              )}
+            </div>
+            <div className="metricMeta">
+              Orders placed: {fmtCompact(statusQ.data?.ordersPlacedToday ?? 0)}
+            </div>
           </div>
           <div className="metricCard">
             <div className="metricLabel">Feed Health</div>
-            <div className="metricValue">{staleItems.length ? "Degraded" : "Healthy"}</div>
+            <div className="metricValue">
+              {staleItems.length ? "Degraded" : "Healthy"}
+            </div>
             <div className="metricMeta">
               Worst lag:{" "}
               {staleItems.length
                 ? fmtLag(staleItems[staleItems.length - 1]?.lagSec ?? null)
-                : fmtLag(Math.max(...Object.values(feedHealth).map((h) => h.lagSec || 0), 0))}
+                : fmtLag(
+                    Math.max(
+                      ...Object.values(feedHealth).map((h) => h.lagSec || 0),
+                      0,
+                    ),
+                  )}
             </div>
           </div>
         </div>
@@ -964,7 +1195,9 @@ export default function App() {
             <div className="panelHeader">
               <div className="left">
                 <div style={{ fontWeight: 700 }}>Active Trade</div>
-                <span className="pill">{statusQ.data?.activeTradeId ? "LIVE" : "NONE"}</span>
+                <span className="pill">
+                  {statusQ.data?.activeTradeId ? "LIVE" : "NONE"}
+                </span>
               </div>
             </div>
             <div className="panelBody">
@@ -980,11 +1213,15 @@ export default function App() {
                   </div>
                   <div>
                     <span className="stackLabel">Side</span>
-                    <div className="stackValue">{statusQ.data?.activeTrade?.side || "-"}</div>
+                    <div className="stackValue">
+                      {statusQ.data?.activeTrade?.side || "-"}
+                    </div>
                   </div>
                   <div>
                     <span className="stackLabel">Entry</span>
-                    <div className="stackValue">{fmtNumber(statusQ.data?.activeTrade?.entryPrice)}</div>
+                    <div className="stackValue">
+                      {fmtNumber(statusQ.data?.activeTrade?.entryPrice)}
+                    </div>
                   </div>
                   <div>
                     <span className="stackLabel">Stop / Target</span>
@@ -995,7 +1232,9 @@ export default function App() {
                   </div>
                 </div>
               ) : (
-                <div className="panelPlaceholder">No active trade reported by backend.</div>
+                <div className="panelPlaceholder">
+                  No active trade reported by backend.
+                </div>
               )}
             </div>
           </div>
@@ -1004,7 +1243,12 @@ export default function App() {
             <div className="panelHeader">
               <div className="left">
                 <div style={{ fontWeight: 700 }}>System Health</div>
-                <span className={["pill", socketState.connected ? "good" : "warn"].join(" ")}>
+                <span
+                  className={[
+                    "pill",
+                    socketState.connected ? "good" : "warn",
+                  ].join(" ")}
+                >
                   {socketState.connected ? "WS LIVE" : "POLLING"}
                 </span>
               </div>
@@ -1013,15 +1257,21 @@ export default function App() {
               <div className="stackList">
                 <div>
                   <span className="stackLabel">Last socket event</span>
-                  <div className="stackValue">{socketState.lastEvent || "—"}</div>
+                  <div className="stackValue">
+                    {socketState.lastEvent || "—"}
+                  </div>
                 </div>
                 <div>
                   <span className="stackLabel">Last disconnect</span>
-                  <div className="stackValue">{formatSince(statusQ.data?.ticker?.lastDisconnect)}</div>
+                  <div className="stackValue">
+                    {formatSince(statusQ.data?.ticker?.lastDisconnect)}
+                  </div>
                 </div>
                 <div>
                   <span className="stackLabel">Rejected trades</span>
-                  <div className="stackValue">{filteredTradeStats.rejected}</div>
+                  <div className="stackValue">
+                    {filteredTradeStats.rejected}
+                  </div>
                 </div>
               </div>
             </div>
@@ -1039,27 +1289,39 @@ export default function App() {
                 <div className="stackList">
                   <div>
                     <span className="stackLabel">Max daily loss</span>
-                    <div className="stackValue">{fmtCurrency(riskLimits.maxDailyLoss ?? null)}</div>
+                    <div className="stackValue">
+                      {fmtCurrency(riskLimits.maxDailyLoss ?? null)}
+                    </div>
                   </div>
                   <div>
                     <span className="stackLabel">Max drawdown</span>
-                    <div className="stackValue">{fmtCurrency(riskLimits.maxDrawdown ?? null)}</div>
+                    <div className="stackValue">
+                      {fmtCurrency(riskLimits.maxDrawdown ?? null)}
+                    </div>
                   </div>
                   <div>
                     <span className="stackLabel">Max open trades</span>
-                    <div className="stackValue">{fmtNumber(riskLimits.maxOpenTrades ?? null, 0)}</div>
+                    <div className="stackValue">
+                      {fmtNumber(riskLimits.maxOpenTrades ?? null, 0)}
+                    </div>
                   </div>
                   <div>
                     <span className="stackLabel">Max exposure</span>
-                    <div className="stackValue">{fmtCurrency(riskLimits.maxExposureInr ?? null)}</div>
+                    <div className="stackValue">
+                      {fmtCurrency(riskLimits.maxExposureInr ?? null)}
+                    </div>
                   </div>
                   <div>
                     <span className="stackLabel">Open positions</span>
-                    <div className="stackValue">{fmtNumber(riskLimits.usage?.openPositions ?? null, 0)}</div>
+                    <div className="stackValue">
+                      {fmtNumber(riskLimits.usage?.openPositions ?? null, 0)}
+                    </div>
                   </div>
                 </div>
               ) : (
-                <div className="panelPlaceholder">Risk limits not available yet.</div>
+                <div className="panelPlaceholder">
+                  Risk limits not available yet.
+                </div>
               )}
             </div>
           </div>
@@ -1076,11 +1338,15 @@ export default function App() {
                 <div className="stackList">
                   <div>
                     <span className="stackLabel">Fill rate</span>
-                    <div className="stackValue">{fmtPercent(executionQuality.fillRate ?? null)}</div>
+                    <div className="stackValue">
+                      {fmtPercent(executionQuality.fillRate ?? null)}
+                    </div>
                   </div>
                   <div>
                     <span className="stackLabel">Avg slippage</span>
-                    <div className="stackValue">{fmtNumber(executionQuality.avgSlippage ?? null)}</div>
+                    <div className="stackValue">
+                      {fmtNumber(executionQuality.avgSlippage ?? null)}
+                    </div>
                   </div>
                   <div>
                     <span className="stackLabel">Avg latency</span>
@@ -1092,11 +1358,15 @@ export default function App() {
                   </div>
                   <div>
                     <span className="stackLabel">Rejects</span>
-                    <div className="stackValue">{fmtNumber(executionQuality.rejects ?? null, 0)}</div>
+                    <div className="stackValue">
+                      {fmtNumber(executionQuality.rejects ?? null, 0)}
+                    </div>
                   </div>
                 </div>
               ) : (
-                <div className="panelPlaceholder">Execution stats not available yet.</div>
+                <div className="panelPlaceholder">
+                  Execution stats not available yet.
+                </div>
               )}
             </div>
           </div>
@@ -1113,7 +1383,9 @@ export default function App() {
                 <div className="stackList">
                   <div>
                     <span className="stackLabel">Enabled channels</span>
-                    <div className="stackValue">{alertChannelStats.enabled} / {alertChannelStats.total}</div>
+                    <div className="stackValue">
+                      {alertChannelStats.enabled} / {alertChannelStats.total}
+                    </div>
                   </div>
                   <div>
                     <span className="stackLabel">Incidents in range</span>
@@ -1121,7 +1393,9 @@ export default function App() {
                   </div>
                   <div>
                     <span className="stackLabel">Critical / High</span>
-                    <div className="stackValue">{alertIncidentStats.critical + alertIncidentStats.high}</div>
+                    <div className="stackValue">
+                      {alertIncidentStats.critical + alertIncidentStats.high}
+                    </div>
                   </div>
                 </div>
               ) : (
@@ -1149,10 +1423,24 @@ export default function App() {
                   </thead>
                   <tbody>
                     {recentAlertIncidents.map((incident) => (
-                      <tr key={incident._id || `${incident.type}-${incident.createdAt}`}>
-                        <td className="mono">{incident.createdAt ? new Date(incident.createdAt).toLocaleString() : "-"}</td>
+                      <tr
+                        key={
+                          incident._id ||
+                          `${incident.type}-${incident.createdAt}`
+                        }
+                      >
+                        <td className="mono">
+                          {incident.createdAt
+                            ? new Date(incident.createdAt).toLocaleString()
+                            : "-"}
+                        </td>
                         <td>
-                          <span className={["pill", severityClass(incident.severity)].join(" ")}>
+                          <span
+                            className={[
+                              "pill",
+                              severityClass(incident.severity),
+                            ].join(" ")}
+                          >
                             {(incident.severity || "unknown").toUpperCase()}
                           </span>
                         </td>
@@ -1191,7 +1479,12 @@ export default function App() {
                         <td className="mono">{row.id}</td>
                         <td className="mono">{row.count}</td>
                         <td className="mono">{fmtPercent(row.winRate)}</td>
-                        <td className={["mono", row.pnl >= 0 ? "goodText" : "badText"].join(" ")}>
+                        <td
+                          className={[
+                            "mono",
+                            row.pnl >= 0 ? "goodText" : "badText",
+                          ].join(" ")}
+                        >
                           {fmtCurrency(row.pnl)}
                         </td>
                       </tr>
@@ -1216,9 +1509,16 @@ export default function App() {
                 <div className="pulseList">
                   {instrumentPulse.map((row) => (
                     <div key={row.token} className="pulseRow">
-                      <div className="pulseSymbol">{labelForToken(row.token, tokenLabels)}</div>
+                      <div className="pulseSymbol">
+                        {labelForToken(row.token, tokenLabels)}
+                      </div>
                       <div className="pulseMeta">{row.count} trades</div>
-                      <div className={["pulseValue", row.pnl >= 0 ? "goodText" : "badText"].join(" ")}>
+                      <div
+                        className={[
+                          "pulseValue",
+                          row.pnl >= 0 ? "goodText" : "badText",
+                        ].join(" ")}
+                      >
                         {fmtCurrency(row.pnl)}
                       </div>
                     </div>
@@ -1234,11 +1534,25 @@ export default function App() {
             <div className="panelHeader">
               <div className="left">
                 <div style={{ fontWeight: 700 }}>Admin Actions</div>
-                <span className={["pill", criticalOk === true ? "good" : criticalOk === false ? "bad" : "warn"].join(" ")}>
-                  Critical Health {criticalOk === null ? "N/A" : criticalOk ? "OK" : "FAIL"}
+                <span
+                  className={[
+                    "pill",
+                    criticalOk === true
+                      ? "good"
+                      : criticalOk === false
+                        ? "bad"
+                        : "warn",
+                  ].join(" ")}
+                >
+                  Critical Health{" "}
+                  {criticalOk === null ? "N/A" : criticalOk ? "OK" : "FAIL"}
                 </span>
               </div>
-              <button className="btn small" type="button" onClick={() => criticalHealthQ.refetch()}>
+              <button
+                className="btn small"
+                type="button"
+                onClick={() => criticalHealthQ.refetch()}
+              >
                 Refresh
               </button>
             </div>
@@ -1246,15 +1560,22 @@ export default function App() {
               <div className="healthList">
                 {criticalChecks.length ? (
                   criticalChecks.map((check, idx) => (
-                    <span key={`${check.code}-${idx}`} className={["pill", check.ok ? "good" : "bad"].join(" ")}>
+                    <span
+                      key={`${check.code}-${idx}`}
+                      className={["pill", check.ok ? "good" : "bad"].join(" ")}
+                    >
                       {check.code}
                     </span>
                   ))
                 ) : (
-                  <span className="muted">No critical checks reported yet.</span>
+                  <span className="muted">
+                    No critical checks reported yet.
+                  </span>
                 )}
                 {criticalFails.length ? (
-                  <span className="muted">Failures: {criticalFails.map((c) => c.code).join(", ")}</span>
+                  <span className="muted">
+                    Failures: {criticalFails.map((c) => c.code).join(", ")}
+                  </span>
                 ) : null}
               </div>
               <div className="actionGrid">
@@ -1274,7 +1595,9 @@ export default function App() {
                   disabled={actionBusy.calendarReload}
                   title="Reload market calendar metadata"
                 >
-                  {actionBusy.calendarReload ? "Reloading Calendar…" : "Reload Calendar"}
+                  {actionBusy.calendarReload
+                    ? "Reloading Calendar…"
+                    : "Reload Calendar"}
                 </button>
                 <button
                   className="btn"
@@ -1283,7 +1606,9 @@ export default function App() {
                   disabled={actionBusy.retentionEnsure}
                   title="Ensure DB retention indexes"
                 >
-                  {actionBusy.retentionEnsure ? "Ensuring Retention…" : "Ensure Retention"}
+                  {actionBusy.retentionEnsure
+                    ? "Ensuring Retention…"
+                    : "Ensure Retention"}
                 </button>
                 <button
                   className="btn"
@@ -1292,7 +1617,9 @@ export default function App() {
                   disabled={actionBusy.costCalibrationReload}
                   title="Reload cost calibration from DB"
                 >
-                  {actionBusy.costCalibrationReload ? "Reloading Costs…" : "Reload Costs"}
+                  {actionBusy.costCalibrationReload
+                    ? "Reloading Costs…"
+                    : "Reload Costs"}
                 </button>
                 <button
                   className="btn"
@@ -1301,7 +1628,9 @@ export default function App() {
                   disabled={actionBusy.optimizerReload}
                   title="Reload optimizer state"
                 >
-                  {actionBusy.optimizerReload ? "Reloading Optimizer…" : "Reload Optimizer"}
+                  {actionBusy.optimizerReload
+                    ? "Reloading Optimizer…"
+                    : "Reload Optimizer"}
                 </button>
                 <button
                   className="btn"
@@ -1310,7 +1639,9 @@ export default function App() {
                   disabled={actionBusy.optimizerFlush}
                   title="Force optimizer persistence"
                 >
-                  {actionBusy.optimizerFlush ? "Flushing Optimizer…" : "Flush Optimizer"}
+                  {actionBusy.optimizerFlush
+                    ? "Flushing Optimizer…"
+                    : "Flush Optimizer"}
                 </button>
                 <button
                   className="btn"
@@ -1319,7 +1650,9 @@ export default function App() {
                   disabled={actionBusy.optimizerReset}
                   title="Reset optimizer state"
                 >
-                  {actionBusy.optimizerReset ? "Resetting Optimizer…" : "Reset Optimizer"}
+                  {actionBusy.optimizerReset
+                    ? "Resetting Optimizer…"
+                    : "Reset Optimizer"}
                 </button>
                 <button
                   className="btn"
@@ -1328,7 +1661,9 @@ export default function App() {
                   disabled={actionBusy.telemetryFlush}
                   title="Flush signal telemetry"
                 >
-                  {actionBusy.telemetryFlush ? "Flushing Telemetry…" : "Flush Telemetry"}
+                  {actionBusy.telemetryFlush
+                    ? "Flushing Telemetry…"
+                    : "Flush Telemetry"}
                 </button>
                 <button
                   className="btn"
@@ -1337,7 +1672,9 @@ export default function App() {
                   disabled={actionBusy.tradeTelemetryFlush}
                   title="Flush trade telemetry"
                 >
-                  {actionBusy.tradeTelemetryFlush ? "Flushing Trade Telemetry…" : "Flush Trade Telemetry"}
+                  {actionBusy.tradeTelemetryFlush
+                    ? "Flushing Trade Telemetry…"
+                    : "Flush Trade Telemetry"}
                 </button>
                 <button
                   className="btn"
@@ -1350,7 +1687,8 @@ export default function App() {
                 </button>
               </div>
               <div className="actionNote">
-                Actions require admin permissions (API key) and will log to audit trails on the backend.
+                Actions require admin permissions (API key) and will log to
+                audit trails on the backend.
               </div>
             </div>
           </div>
@@ -1369,13 +1707,24 @@ export default function App() {
                     <div key={row.id} className="activityRow">
                       <div className="activityMain">
                         <div className="activityTitle">
-                          {labelForToken(row.token, tokenLabels)} • {row.side || "-"}
+                          {labelForToken(row.token, tokenLabels)} •{" "}
+                          {row.side || "-"}
                         </div>
                         <div className="activityMeta">
-                          {row.status || "status n/a"} • {row.updatedAt ? new Date(row.updatedAt).toLocaleString() : "-"}
+                          {row.status || "status n/a"} •{" "}
+                          {row.updatedAt
+                            ? new Date(row.updatedAt).toLocaleString()
+                            : "-"}
                         </div>
                       </div>
-                      <div className={["activityValue", row.pnl !== null && row.pnl >= 0 ? "goodText" : "badText"].join(" ")}>
+                      <div
+                        className={[
+                          "activityValue",
+                          row.pnl !== null && row.pnl >= 0
+                            ? "goodText"
+                            : "badText",
+                        ].join(" ")}
+                      >
                         {row.pnl === null ? "-" : fmtCurrency(row.pnl)}
                       </div>
                     </div>
@@ -1417,7 +1766,11 @@ export default function App() {
         </div>
 
         {/* Sidebar blotter */}
-        <div className={["blotterShell", blotterOpen ? "open" : "closed"].join(" ")}>
+        <div
+          className={["blotterShell", blotterOpen ? "open" : "closed"].join(
+            " ",
+          )}
+        >
           <TradeBlotter
             trades={filteredTrades}
             limit={blotterLimit}
@@ -1431,7 +1784,12 @@ export default function App() {
         </div>
 
         {!blotterOpen ? (
-          <button className="blotterHandle" type="button" onClick={() => setBlotterOpen(true)} title="Open trade blotter">
+          <button
+            className="blotterHandle"
+            type="button"
+            onClick={() => setBlotterOpen(true)}
+            title="Open trade blotter"
+          >
             Blotter
           </button>
         ) : null}
@@ -1441,7 +1799,13 @@ export default function App() {
           {toasts.map((t) => (
             <div key={t.id} className={["toast", t.level].join(" ")}>
               <div className="toastMsg">{t.message}</div>
-              <button className="toastClose" onClick={() => setToasts((prev) => prev.filter((x) => x.id !== t.id))} title="Dismiss">
+              <button
+                className="toastClose"
+                onClick={() =>
+                  setToasts((prev) => prev.filter((x) => x.id !== t.id))
+                }
+                title="Dismiss"
+              >
                 ×
               </button>
             </div>
