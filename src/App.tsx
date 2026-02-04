@@ -41,6 +41,16 @@ type SavedLayout = {
   blotterOpen?: boolean;
 };
 
+type DateRangeKey = "1D" | "7D" | "30D" | "90D" | "ALL";
+
+const DATE_RANGE_OPTIONS: Array<{ key: DateRangeKey; label: string; days: number | null }> = [
+  { key: "1D", label: "1D", days: 1 },
+  { key: "7D", label: "7D", days: 7 },
+  { key: "30D", label: "30D", days: 30 },
+  { key: "90D", label: "90D", days: 90 },
+  { key: "ALL", label: "All", days: null },
+];
+
 function loadLayout(): SavedLayout {
   try {
     const raw = localStorage.getItem(LAYOUT_KEY);
@@ -143,6 +153,63 @@ function statusBucket(status?: string) {
   return "other";
 }
 
+function calcTradeStats(rows: TradeRow[]) {
+  const closed = rows.filter((t) => statusBucket(t.status) === "closed");
+  const open = rows.filter((t) => statusBucket(t.status) === "open");
+  const rejected = rows.filter((t) => statusBucket(t.status) === "rejected");
+
+  let pnl = 0;
+  let wins = 0;
+  let losses = 0;
+  let holdMs = 0;
+  let holdCount = 0;
+  let exposure = 0;
+
+  for (const t of rows) {
+    const qty = Number(t.qty);
+    const entry = Number(t.entryPrice);
+    if (Number.isFinite(qty) && Number.isFinite(entry)) {
+      exposure += qty * entry;
+    }
+  }
+
+  for (const t of closed) {
+    const qty = Number(t.qty);
+    const entry = Number(t.entryPrice);
+    const exit = Number(t.exitPrice);
+    const side = (t.side || "").toUpperCase();
+    if (Number.isFinite(qty) && Number.isFinite(entry) && Number.isFinite(exit)) {
+      const raw = side === "SELL" ? (entry - exit) * qty : (exit - entry) * qty;
+      pnl += raw;
+      if (raw >= 0) wins += 1;
+      else losses += 1;
+    }
+
+    const start = t.createdAt ? new Date(t.createdAt).getTime() : NaN;
+    const end = t.updatedAt ? new Date(t.updatedAt).getTime() : NaN;
+    if (Number.isFinite(start) && Number.isFinite(end) && end >= start) {
+      holdMs += end - start;
+      holdCount += 1;
+    }
+  }
+
+  const winRate = closed.length ? (wins / closed.length) * 100 : null;
+  const avgHoldMin = holdCount ? holdMs / holdCount / 60000 : null;
+
+  return {
+    total: rows.length,
+    closed: closed.length,
+    open: open.length,
+    rejected: rejected.length,
+    wins,
+    losses,
+    pnl,
+    winRate,
+    avgHoldMin,
+    exposure,
+  };
+}
+
 export default function App() {
   const { settings, setSettings } = useSettings();
   const [draftBase, setDraftBase] = React.useState(settings.baseUrl);
@@ -209,67 +276,35 @@ export default function App() {
     return Number.isFinite(ms) ? ms : Date.now();
   }, [statusQ.data?.now]);
 
-  const tradeStats = React.useMemo(() => {
-    const rows = trades || [];
-    const closed = rows.filter((t) => statusBucket(t.status) === "closed");
-    const open = rows.filter((t) => statusBucket(t.status) === "open");
-    const rejected = rows.filter((t) => statusBucket(t.status) === "rejected");
+  const [dateRange, setDateRange] = React.useState<DateRangeKey>("ALL");
 
-    let pnl = 0;
-    let wins = 0;
-    let losses = 0;
-    let holdMs = 0;
-    let holdCount = 0;
-    let exposure = 0;
+  const rangeConfig = React.useMemo(
+    () => DATE_RANGE_OPTIONS.find((opt) => opt.key === dateRange) || DATE_RANGE_OPTIONS[0],
+    [dateRange],
+  );
 
-    for (const t of rows) {
-      const qty = Number(t.qty);
-      const entry = Number(t.entryPrice);
-      if (Number.isFinite(qty) && Number.isFinite(entry)) {
-        exposure += qty * entry;
-      }
-    }
+  const rangeStartMs = React.useMemo(() => {
+    if (!rangeConfig.days) return null;
+    return serverNowMs - rangeConfig.days * 24 * 60 * 60 * 1000;
+  }, [rangeConfig.days, serverNowMs]);
 
-    for (const t of closed) {
-      const qty = Number(t.qty);
-      const entry = Number(t.entryPrice);
-      const exit = Number(t.exitPrice);
-      const side = (t.side || "").toUpperCase();
-      if (Number.isFinite(qty) && Number.isFinite(entry) && Number.isFinite(exit)) {
-        const raw = side === "SELL" ? (entry - exit) * qty : (exit - entry) * qty;
-        pnl += raw;
-        if (raw >= 0) wins += 1;
-        else losses += 1;
-      }
+  const filteredTrades = React.useMemo(() => {
+    if (!rangeStartMs) return trades;
+    return (trades || []).filter((t) => {
+      const ts = new Date(t.updatedAt || t.createdAt || "").getTime();
+      return Number.isFinite(ts) && ts >= rangeStartMs;
+    });
+  }, [rangeStartMs, trades]);
 
-      const start = t.createdAt ? new Date(t.createdAt).getTime() : NaN;
-      const end = t.updatedAt ? new Date(t.updatedAt).getTime() : NaN;
-      if (Number.isFinite(start) && Number.isFinite(end) && end >= start) {
-        holdMs += end - start;
-        holdCount += 1;
-      }
-    }
+  const filteredTradeStats = React.useMemo(() => calcTradeStats(filteredTrades), [filteredTrades]);
+  const allTradeStats = React.useMemo(() => calcTradeStats(trades), [trades]);
 
-    const winRate = closed.length ? (wins / closed.length) * 100 : null;
-    const avgHoldMin = holdCount ? holdMs / holdCount / 60000 : null;
-
-    return {
-      total: rows.length,
-      closed: closed.length,
-      open: open.length,
-      rejected: rejected.length,
-      wins,
-      losses,
-      pnl,
-      winRate,
-      avgHoldMin,
-      exposure,
-    };
-  }, [trades]);
+  const remainingTradeCount = Math.max(0, allTradeStats.total - filteredTradeStats.total);
+  const remainingPnl = allTradeStats.pnl - filteredTradeStats.pnl;
 
   const strategyStats = React.useMemo(() => {
     const map = new Map<string, { id: string; count: number; wins: number; pnl: number }>();
-    for (const t of trades || []) {
+    for (const t of filteredTrades || []) {
       const id = t.strategyId || "unassigned";
       if (!map.has(id)) map.set(id, { id, count: 0, wins: 0, pnl: 0 });
       const row = map.get(id)!;
@@ -291,11 +326,11 @@ export default function App() {
       }))
       .sort((a, b) => b.pnl - a.pnl)
       .slice(0, 6);
-  }, [trades]);
+  }, [filteredTrades]);
 
   const instrumentPulse = React.useMemo(() => {
     const map = new Map<number, { token: number; count: number; pnl: number }>();
-    for (const t of trades || []) {
+    for (const t of filteredTrades || []) {
       const token = Number(t.instrument_token);
       if (!Number.isFinite(token)) continue;
       if (!map.has(token)) map.set(token, { token, count: 0, pnl: 0 });
@@ -313,10 +348,10 @@ export default function App() {
     return Array.from(map.values())
       .sort((a, b) => b.pnl - a.pnl)
       .slice(0, 5);
-  }, [trades]);
+  }, [filteredTrades]);
 
   const recentActivity = React.useMemo(() => {
-    return (trades || [])
+    return (filteredTrades || [])
       .slice(0, 6)
       .map((t) => ({
         id: t.tradeId,
@@ -335,7 +370,7 @@ export default function App() {
           return null;
         })(),
       }));
-  }, [trades]);
+  }, [filteredTrades]);
 
   const defaultCharts: ChartConfig[] = React.useMemo(
     () => [
@@ -682,32 +717,68 @@ export default function App() {
           </div>
         </div>
 
+        <div className="overviewTools">
+          <div className="rangeControls">
+            <div className="field">
+              <label>Date range</label>
+              <select className="small" value={dateRange} onChange={(e) => setDateRange(e.target.value as DateRangeKey)}>
+                {DATE_RANGE_OPTIONS.map((opt) => (
+                  <option key={opt.key} value={opt.key}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <span className="rangeHint">
+              Showing trades updated within {rangeConfig.days ? `last ${rangeConfig.days}d` : "all time"}.
+            </span>
+          </div>
+          <div className="rangeSummary">
+            <span className="pill">
+              Trades in range: {filteredTradeStats.total} / {allTradeStats.total}
+            </span>
+            <span className={["pill", filteredTradeStats.pnl >= 0 ? "good" : "bad"].join(" ")}>
+              Range P&amp;L {fmtCurrency(filteredTradeStats.pnl)}
+            </span>
+            <span className={["pill", remainingPnl >= 0 ? "good" : "bad"].join(" ")}>
+              Remaining P&amp;L {fmtCurrency(remainingPnl)}
+            </span>
+            <span className="pill">Outside range: {remainingTradeCount} trades</span>
+          </div>
+        </div>
+
         <div className="overviewGrid">
           <div className="metricCard">
             <div className="metricLabel">Realized P&amp;L</div>
-            <div className={["metricValue", tradeStats.pnl >= 0 ? "goodText" : "badText"].join(" ")}>
-              {fmtCurrency(tradeStats.pnl)}
+            <div className={["metricValue", filteredTradeStats.pnl >= 0 ? "goodText" : "badText"].join(" ")}>
+              {fmtCurrency(filteredTradeStats.pnl)}
             </div>
-            <div className="metricMeta">Closed trades: {tradeStats.closed}</div>
+            <div className="metricMeta">
+              Closed trades: {filteredTradeStats.closed} • Range: {rangeConfig.label}
+            </div>
           </div>
           <div className="metricCard">
             <div className="metricLabel">Win Rate</div>
-            <div className="metricValue">{fmtPercent(tradeStats.winRate)}</div>
-            <div className="metricMeta">Wins: {tradeStats.wins} • Losses: {tradeStats.losses}</div>
+            <div className="metricValue">{fmtPercent(filteredTradeStats.winRate)}</div>
+            <div className="metricMeta">
+              Wins: {filteredTradeStats.wins} • Losses: {filteredTradeStats.losses}
+            </div>
           </div>
           <div className="metricCard">
             <div className="metricLabel">Avg Hold Time</div>
-            <div className="metricValue">{tradeStats.avgHoldMin ? `${tradeStats.avgHoldMin.toFixed(1)}m` : "-"}</div>
+            <div className="metricValue">
+              {filteredTradeStats.avgHoldMin ? `${filteredTradeStats.avgHoldMin.toFixed(1)}m` : "-"}
+            </div>
             <div className="metricMeta">Strategy execution speed</div>
           </div>
           <div className="metricCard">
             <div className="metricLabel">Open Exposure</div>
-            <div className="metricValue">{fmtCurrency(tradeStats.exposure)}</div>
-            <div className="metricMeta">Open trades: {tradeStats.open}</div>
+            <div className="metricValue">{fmtCurrency(filteredTradeStats.exposure)}</div>
+            <div className="metricMeta">Open trades: {filteredTradeStats.open}</div>
           </div>
           <div className="metricCard">
             <div className="metricLabel">Trades Today</div>
-            <div className="metricValue">{fmtCompact(statusQ.data?.tradesToday ?? tradeStats.total)}</div>
+            <div className="metricValue">{fmtCompact(statusQ.data?.tradesToday ?? filteredTradeStats.total)}</div>
             <div className="metricMeta">Orders placed: {fmtCompact(statusQ.data?.ordersPlacedToday ?? 0)}</div>
           </div>
           <div className="metricCard">
@@ -784,7 +855,7 @@ export default function App() {
                 </div>
                 <div>
                   <span className="stackLabel">Rejected trades</span>
-                  <div className="stackValue">{tradeStats.rejected}</div>
+                  <div className="stackValue">{filteredTradeStats.rejected}</div>
                 </div>
               </div>
             </div>
@@ -917,13 +988,14 @@ export default function App() {
         {/* Sidebar blotter */}
         <div className={["blotterShell", blotterOpen ? "open" : "closed"].join(" ")}>
           <TradeBlotter
-            trades={trades}
+            trades={filteredTrades}
             limit={blotterLimit}
             onLimitChange={setBlotterLimit}
             tokenLabels={tokenLabels}
             selectedToken={selectedToken}
             onSelectToken={(tok) => focusToken(tok)}
             onClose={() => setBlotterOpen(false)}
+            rangeLabel={`Range: ${rangeConfig.label}`}
           />
         </div>
 
