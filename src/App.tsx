@@ -145,6 +145,14 @@ function formatSince(ts?: string | null) {
   return `${h}h ${m}m`;
 }
 
+function severityClass(sev?: string) {
+  const s = (sev || "").toLowerCase();
+  if (s.includes("crit") || s.includes("high") || s.includes("sev")) return "bad";
+  if (s.includes("warn")) return "warn";
+  if (s.includes("info") || s.includes("low")) return "good";
+  return "";
+}
+
 function statusBucket(status?: string) {
   const s = (status || "").toUpperCase();
   if (s.includes("OPEN") || s.includes("ACTIVE")) return "open";
@@ -255,6 +263,8 @@ export default function App() {
 
   const tokens: number[] = subsQ.data?.tokens || [];
   const trades = tradesQ.data?.rows || [];
+  const alertChannels = alertChannelsQ.data?.rows || [];
+  const alertIncidents = alertIncidentsQ.data?.rows || [];
 
   const tokenLabels = React.useMemo(() => {
     const map = buildTokenLabelsFromTrades(trades);
@@ -295,6 +305,44 @@ export default function App() {
       return Number.isFinite(ts) && ts >= rangeStartMs;
     });
   }, [rangeStartMs, trades]);
+
+  const filteredAlertIncidents = React.useMemo(() => {
+    if (!rangeStartMs) return alertIncidents;
+    return (alertIncidents || []).filter((incident) => {
+      const ts = new Date(incident.createdAt || "").getTime();
+      return Number.isFinite(ts) && ts >= rangeStartMs;
+    });
+  }, [alertIncidents, rangeStartMs]);
+
+  const alertIncidentStats = React.useMemo(() => {
+    const counts = { total: 0, critical: 0, high: 0, warn: 0, info: 0, other: 0 };
+    for (const incident of filteredAlertIncidents || []) {
+      counts.total += 1;
+      const sev = (incident.severity || "").toLowerCase();
+      if (sev.includes("crit")) counts.critical += 1;
+      else if (sev.includes("high")) counts.high += 1;
+      else if (sev.includes("warn")) counts.warn += 1;
+      else if (sev.includes("info") || sev.includes("low")) counts.info += 1;
+      else counts.other += 1;
+    }
+    return counts;
+  }, [filteredAlertIncidents]);
+
+  const alertChannelStats = React.useMemo(() => {
+    const total = alertChannels.length;
+    const enabled = alertChannels.filter((channel) => channel.enabled).length;
+    return { total, enabled, disabled: Math.max(0, total - enabled) };
+  }, [alertChannels]);
+
+  const recentAlertIncidents = React.useMemo(() => {
+    return [...(filteredAlertIncidents || [])]
+      .sort((a, b) => {
+        const ta = new Date(a.createdAt || 0).getTime();
+        const tb = new Date(b.createdAt || 0).getTime();
+        return tb - ta;
+      })
+      .slice(0, 5);
+  }, [filteredAlertIncidents]);
 
   const filteredTradeStats = React.useMemo(() => calcTradeStats(filteredTrades), [filteredTrades]);
   const allTradeStats = React.useMemo(() => calcTradeStats(trades), [trades]);
@@ -858,6 +906,72 @@ export default function App() {
                   <div className="stackValue">{filteredTradeStats.rejected}</div>
                 </div>
               </div>
+            </div>
+          </div>
+
+          <div className="panel miniPanel">
+            <div className="panelHeader">
+              <div className="left">
+                <div style={{ fontWeight: 700 }}>Alerting</div>
+                <span className="pill">Range: {rangeConfig.label}</span>
+              </div>
+            </div>
+            <div className="panelBody">
+              {alertChannels.length || filteredAlertIncidents.length ? (
+                <div className="stackList">
+                  <div>
+                    <span className="stackLabel">Enabled channels</span>
+                    <div className="stackValue">{alertChannelStats.enabled} / {alertChannelStats.total}</div>
+                  </div>
+                  <div>
+                    <span className="stackLabel">Incidents in range</span>
+                    <div className="stackValue">{alertIncidentStats.total}</div>
+                  </div>
+                  <div>
+                    <span className="stackLabel">Critical / High</span>
+                    <div className="stackValue">{alertIncidentStats.critical + alertIncidentStats.high}</div>
+                  </div>
+                </div>
+              ) : (
+                <div className="panelPlaceholder">No alerting data yet.</div>
+              )}
+            </div>
+          </div>
+
+          <div className="panel miniPanel">
+            <div className="panelHeader">
+              <div className="left">
+                <div style={{ fontWeight: 700 }}>Alert Incidents</div>
+                <span className="pill">Range: {rangeConfig.label}</span>
+              </div>
+            </div>
+            <div className="panelBody">
+              {recentAlertIncidents.length ? (
+                <table className="miniTable">
+                  <thead>
+                    <tr>
+                      <th>When</th>
+                      <th>Severity</th>
+                      <th>Message</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {recentAlertIncidents.map((incident) => (
+                      <tr key={incident._id || `${incident.type}-${incident.createdAt}`}>
+                        <td className="mono">{incident.createdAt ? new Date(incident.createdAt).toLocaleString() : "-"}</td>
+                        <td>
+                          <span className={["pill", severityClass(incident.severity)].join(" ")}>
+                            {(incident.severity || "unknown").toUpperCase()}
+                          </span>
+                        </td>
+                        <td>{incident.message || incident.type || "-"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              ) : (
+                <div className="panelPlaceholder">No incidents in range.</div>
+              )}
             </div>
           </div>
 
