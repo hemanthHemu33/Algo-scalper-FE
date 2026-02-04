@@ -5,6 +5,7 @@ import {
   useAlertIncidents,
   useAuditLogs,
   useCostCalibration,
+  useCriticalHealth,
   useEquity,
   useExecutionQuality,
   useFnoUniverse,
@@ -260,6 +261,7 @@ export default function App() {
   const costCalibQ = useCostCalibration(30000);
   const calendarQ = useMarketCalendar(30000);
   const fnoQ = useFnoUniverse(60000);
+  const criticalHealthQ = useCriticalHealth(12000);
 
   const tokens: number[] = subsQ.data?.tokens || [];
   const trades = tradesQ.data?.rows || [];
@@ -535,6 +537,26 @@ export default function App() {
   const [kiteErr, setKiteErr] = React.useState<string | null>(null);
   const [kiteRequestToken, setKiteRequestToken] = React.useState<string | null>(null);
   const [killBusy, setKillBusy] = React.useState(false);
+  const [actionBusy, setActionBusy] = React.useState<Record<string, boolean>>({});
+
+  const runAction = React.useCallback(
+    async <T,>(key: string, label: string, fn: () => Promise<T>, onSuccess?: (res: T) => void) => {
+      setActionBusy((prev) => ({ ...prev, [key]: true }));
+      try {
+        const res: any = await fn();
+        if (res?.ok === false) {
+          throw new Error(res?.error || `${label} failed`);
+        }
+        onSuccess?.(res as T);
+        pushToast("good", `${label} completed`);
+      } catch (e: any) {
+        pushToast("bad", `${label} failed: ${e?.message || String(e)}`);
+      } finally {
+        setActionBusy((prev) => ({ ...prev, [key]: false }));
+      }
+    },
+    [pushToast],
+  );
 
   // If the registered Kite redirect URL points to this FE, Kite will redirect back with `request_token`.
   // We catch it here and hand it to the backend for token exchange (api_secret must stay on server).
@@ -633,6 +655,70 @@ export default function App() {
       setKillBusy(false);
     }
   };
+
+  const criticalChecks = criticalHealthQ.data?.checks || [];
+  const criticalFails = criticalChecks.filter((c) => !c.ok);
+  const criticalOk = criticalHealthQ.data?.ok ?? null;
+
+  const handleHaltReset = () =>
+    runAction("haltReset", "Reset halt", () => postJson(settings, "/admin/halt/reset"), () =>
+      statusQ.refetch(),
+    );
+
+  const handleCalendarReload = () =>
+    runAction("calendarReload", "Reload market calendar", () => postJson(settings, "/admin/market/calendar/reload"), () =>
+      calendarQ.refetch(),
+    );
+
+  const handleRetentionEnsure = () =>
+    runAction("retentionEnsure", "Ensure DB retention indexes", () =>
+      postJson(settings, "/admin/db/retention/ensure"),
+    );
+
+  const handleCostCalibrationReload = () =>
+    runAction(
+      "costCalibrationReload",
+      "Reload cost calibration",
+      () => postJson(settings, "/admin/cost/calibration/reload"),
+      () => costCalibQ.refetch(),
+    );
+
+  const handleOptimizerReload = () =>
+    runAction("optimizerReload", "Reload optimizer", () => postJson(settings, "/admin/optimizer/reload"), () =>
+      optimizerQ.refetch(),
+    );
+
+  const handleOptimizerFlush = () =>
+    runAction("optimizerFlush", "Flush optimizer", () => postJson(settings, "/admin/optimizer/flush"), () =>
+      optimizerQ.refetch(),
+    );
+
+  const handleOptimizerReset = () =>
+    runAction("optimizerReset", "Reset optimizer", () => postJson(settings, "/admin/optimizer/reset"), () =>
+      optimizerQ.refetch(),
+    );
+
+  const handleTelemetryFlush = () =>
+    runAction("telemetryFlush", "Flush telemetry", () => postJson(settings, "/admin/telemetry/flush"), () =>
+      telemetryQ.refetch(),
+    );
+
+  const handleTradeTelemetryFlush = () =>
+    runAction(
+      "tradeTelemetryFlush",
+      "Flush trade telemetry",
+      () => postJson(settings, "/admin/trade-telemetry/flush"),
+      () => tradeTelemetryQ.refetch(),
+    );
+
+  const handleAlertsTest = () =>
+    runAction("alertsTest", "Send test alert", () =>
+      postJson(settings, "/admin/alerts/test", {
+        type: "test",
+        message: "Dashboard test alert",
+        severity: "info",
+      }),
+    );
 
   const staleItems = React.useMemo(() => {
     return Object.values(feedHealth)
@@ -1035,6 +1121,131 @@ export default function App() {
               ) : (
                 <div className="panelPlaceholder">Awaiting trade flow.</div>
               )}
+            </div>
+          </div>
+
+          <div className="panel miniPanel wide">
+            <div className="panelHeader">
+              <div className="left">
+                <div style={{ fontWeight: 700 }}>Admin Actions</div>
+                <span className={["pill", criticalOk === true ? "good" : criticalOk === false ? "bad" : "warn"].join(" ")}>
+                  Critical Health {criticalOk === null ? "N/A" : criticalOk ? "OK" : "FAIL"}
+                </span>
+              </div>
+              <button className="btn small" type="button" onClick={() => criticalHealthQ.refetch()}>
+                Refresh
+              </button>
+            </div>
+            <div className="panelBody">
+              <div className="healthList">
+                {criticalChecks.length ? (
+                  criticalChecks.map((check, idx) => (
+                    <span key={`${check.code}-${idx}`} className={["pill", check.ok ? "good" : "bad"].join(" ")}>
+                      {check.code}
+                    </span>
+                  ))
+                ) : (
+                  <span className="muted">No critical checks reported yet.</span>
+                )}
+                {criticalFails.length ? (
+                  <span className="muted">Failures: {criticalFails.map((c) => c.code).join(", ")}</span>
+                ) : null}
+              </div>
+              <div className="actionGrid">
+                <button
+                  className="btn"
+                  type="button"
+                  onClick={handleHaltReset}
+                  disabled={actionBusy.haltReset}
+                  title="Clear runtime HALT flag"
+                >
+                  {actionBusy.haltReset ? "Resetting Halt…" : "Reset Halt"}
+                </button>
+                <button
+                  className="btn"
+                  type="button"
+                  onClick={handleCalendarReload}
+                  disabled={actionBusy.calendarReload}
+                  title="Reload market calendar metadata"
+                >
+                  {actionBusy.calendarReload ? "Reloading Calendar…" : "Reload Calendar"}
+                </button>
+                <button
+                  className="btn"
+                  type="button"
+                  onClick={handleRetentionEnsure}
+                  disabled={actionBusy.retentionEnsure}
+                  title="Ensure DB retention indexes"
+                >
+                  {actionBusy.retentionEnsure ? "Ensuring Retention…" : "Ensure Retention"}
+                </button>
+                <button
+                  className="btn"
+                  type="button"
+                  onClick={handleCostCalibrationReload}
+                  disabled={actionBusy.costCalibrationReload}
+                  title="Reload cost calibration from DB"
+                >
+                  {actionBusy.costCalibrationReload ? "Reloading Costs…" : "Reload Costs"}
+                </button>
+                <button
+                  className="btn"
+                  type="button"
+                  onClick={handleOptimizerReload}
+                  disabled={actionBusy.optimizerReload}
+                  title="Reload optimizer state"
+                >
+                  {actionBusy.optimizerReload ? "Reloading Optimizer…" : "Reload Optimizer"}
+                </button>
+                <button
+                  className="btn"
+                  type="button"
+                  onClick={handleOptimizerFlush}
+                  disabled={actionBusy.optimizerFlush}
+                  title="Force optimizer persistence"
+                >
+                  {actionBusy.optimizerFlush ? "Flushing Optimizer…" : "Flush Optimizer"}
+                </button>
+                <button
+                  className="btn"
+                  type="button"
+                  onClick={handleOptimizerReset}
+                  disabled={actionBusy.optimizerReset}
+                  title="Reset optimizer state"
+                >
+                  {actionBusy.optimizerReset ? "Resetting Optimizer…" : "Reset Optimizer"}
+                </button>
+                <button
+                  className="btn"
+                  type="button"
+                  onClick={handleTelemetryFlush}
+                  disabled={actionBusy.telemetryFlush}
+                  title="Flush signal telemetry"
+                >
+                  {actionBusy.telemetryFlush ? "Flushing Telemetry…" : "Flush Telemetry"}
+                </button>
+                <button
+                  className="btn"
+                  type="button"
+                  onClick={handleTradeTelemetryFlush}
+                  disabled={actionBusy.tradeTelemetryFlush}
+                  title="Flush trade telemetry"
+                >
+                  {actionBusy.tradeTelemetryFlush ? "Flushing Trade Telemetry…" : "Flush Trade Telemetry"}
+                </button>
+                <button
+                  className="btn"
+                  type="button"
+                  onClick={handleAlertsTest}
+                  disabled={actionBusy.alertsTest}
+                  title="Send a test notification"
+                >
+                  {actionBusy.alertsTest ? "Sending Alert…" : "Send Test Alert"}
+                </button>
+              </div>
+              <div className="actionNote">
+                Actions require admin permissions (API key) and will log to audit trails on the backend.
+              </div>
             </div>
           </div>
 

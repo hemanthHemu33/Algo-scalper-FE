@@ -21,6 +21,7 @@ import type {
   CostCalibrationResponse,
   MarketCalendarResponse,
   FnoUniverseResponse,
+  CriticalHealthResponse,
 } from '../types/backend';
 
 export function useStatus(pollMs: number | false = 2000) {
@@ -239,6 +240,16 @@ export function useFnoUniverse(pollMs: number | false = 20000) {
   return useQuery({
     queryKey: ['fnoUniverse', settings.baseUrl, settings.apiKey],
     queryFn: () => getJson<FnoUniverseResponse>(settings, '/admin/fno'),
+    refetchInterval: pollMs,
+    retry: false,
+  });
+}
+
+export function useCriticalHealth(pollMs: number | false = 12000) {
+  const { settings } = useSettings();
+  return useQuery({
+    queryKey: ['criticalHealth', settings.baseUrl, settings.apiKey],
+    queryFn: () => getJson<CriticalHealthResponse>(settings, '/admin/health/critical'),
     refetchInterval: pollMs,
     retry: false,
   });
