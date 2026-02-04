@@ -12,6 +12,7 @@ type Props = {
   selectedToken?: number | null;
   onSelectToken?: (token: number, tradeId?: string) => void;
   onClose?: () => void;
+  rangeLabel?: string;
 };
 
 const IST_TZ = "Asia/Kolkata";
@@ -88,6 +89,7 @@ export function TradeBlotter({
   selectedToken,
   onSelectToken,
   onClose,
+  rangeLabel,
 }: Props) {
   const [query, setQuery] = React.useState("");
   const [statusFilter, setStatusFilter] = React.useState<"ALL" | "OPEN" | "CLOSED" | "REJECT">("ALL");
@@ -190,6 +192,7 @@ export function TradeBlotter({
         <div className="left">
           <div style={{ fontWeight: 700 }}>Trade Blotter</div>
           <span className="pill">last {limit}</span>
+          {rangeLabel ? <span className="pill">{rangeLabel}</span> : null}
         </div>
 
         <div className="panelHeaderActions">
