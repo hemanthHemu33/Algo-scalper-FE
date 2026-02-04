@@ -267,6 +267,9 @@ export default function App() {
   const trades = tradesQ.data?.rows || [];
   const alertChannels = alertChannelsQ.data?.rows || [];
   const alertIncidents = alertIncidentsQ.data?.rows || [];
+  const auditRows = auditQ.data?.rows || [];
+  const riskLimits = riskQ.data;
+  const executionQuality = executionQ.data;
 
   const tokenLabels = React.useMemo(() => {
     const map = buildTokenLabelsFromTrades(trades);
@@ -345,6 +348,16 @@ export default function App() {
       })
       .slice(0, 5);
   }, [filteredAlertIncidents]);
+
+  const recentAuditLogs = React.useMemo(() => {
+    return [...auditRows]
+      .sort((a, b) => {
+        const ta = new Date(a.createdAt || 0).getTime();
+        const tb = new Date(b.createdAt || 0).getTime();
+        return tb - ta;
+      })
+      .slice(0, 5);
+  }, [auditRows]);
 
   const filteredTradeStats = React.useMemo(() => calcTradeStats(filteredTrades), [filteredTrades]);
   const allTradeStats = React.useMemo(() => calcTradeStats(trades), [trades]);
@@ -992,6 +1005,80 @@ export default function App() {
                   <div className="stackValue">{filteredTradeStats.rejected}</div>
                 </div>
               </div>
+            </div>
+          </div>
+
+          <div className="panel miniPanel">
+            <div className="panelHeader">
+              <div className="left">
+                <div style={{ fontWeight: 700 }}>Risk Limits</div>
+                <span className="pill">Portfolio</span>
+              </div>
+            </div>
+            <div className="panelBody">
+              {riskLimits ? (
+                <div className="stackList">
+                  <div>
+                    <span className="stackLabel">Max daily loss</span>
+                    <div className="stackValue">{fmtCurrency(riskLimits.maxDailyLoss ?? null)}</div>
+                  </div>
+                  <div>
+                    <span className="stackLabel">Max drawdown</span>
+                    <div className="stackValue">{fmtCurrency(riskLimits.maxDrawdown ?? null)}</div>
+                  </div>
+                  <div>
+                    <span className="stackLabel">Max open trades</span>
+                    <div className="stackValue">{fmtNumber(riskLimits.maxOpenTrades ?? null, 0)}</div>
+                  </div>
+                  <div>
+                    <span className="stackLabel">Max exposure</span>
+                    <div className="stackValue">{fmtCurrency(riskLimits.maxExposureInr ?? null)}</div>
+                  </div>
+                  <div>
+                    <span className="stackLabel">Open positions</span>
+                    <div className="stackValue">{fmtNumber(riskLimits.usage?.openPositions ?? null, 0)}</div>
+                  </div>
+                </div>
+              ) : (
+                <div className="panelPlaceholder">Risk limits not available yet.</div>
+              )}
+            </div>
+          </div>
+
+          <div className="panel miniPanel">
+            <div className="panelHeader">
+              <div className="left">
+                <div style={{ fontWeight: 700 }}>Execution Quality</div>
+                <span className="pill">Recent</span>
+              </div>
+            </div>
+            <div className="panelBody">
+              {executionQuality ? (
+                <div className="stackList">
+                  <div>
+                    <span className="stackLabel">Fill rate</span>
+                    <div className="stackValue">{fmtPercent(executionQuality.fillRate ?? null)}</div>
+                  </div>
+                  <div>
+                    <span className="stackLabel">Avg slippage</span>
+                    <div className="stackValue">{fmtNumber(executionQuality.avgSlippage ?? null)}</div>
+                  </div>
+                  <div>
+                    <span className="stackLabel">Avg latency</span>
+                    <div className="stackValue">
+                      {Number.isFinite(executionQuality.avgLatencyMs)
+                        ? `${fmtNumber(executionQuality.avgLatencyMs ?? null, 0)} ms`
+                        : "-"}
+                    </div>
+                  </div>
+                  <div>
+                    <span className="stackLabel">Rejects</span>
+                    <div className="stackValue">{fmtNumber(executionQuality.rejects ?? null, 0)}</div>
+                  </div>
+                </div>
+              ) : (
+                <div className="panelPlaceholder">Execution stats not available yet.</div>
+              )}
             </div>
           </div>
 
