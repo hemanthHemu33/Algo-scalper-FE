@@ -733,6 +733,21 @@ export default function App() {
       }),
     );
 
+  const handleDbPurge = () => {
+    if (!connected) {
+      pushToast("warn", "Connect to backend before purging the database.");
+      return;
+    }
+    const confirmation = window.prompt('This will delete Mongo data. Type "PURGE" to confirm.');
+    if (confirmation !== "PURGE") {
+      pushToast("warn", "Database purge cancelled.");
+      return;
+    }
+    runAction("dbPurge", "Purge database", () =>
+      postJson(settings, "/admin/db/purge", { confirm: "PURGE" }),
+    );
+  };
+
   const staleItems = React.useMemo(() => {
     return Object.values(feedHealth)
       .filter((h) => h.stale && h.token !== null)
@@ -817,6 +832,10 @@ export default function App() {
 
           <button className="btn" onClick={onKiteLogin} disabled={kiteBusy} title="Opens the official Kite Connect login page">
             {kiteBusy ? "Kite…" : hasKiteSession ? "Re-login Kite" : "Login Kite"}
+          </button>
+
+          <button className="btn danger" onClick={handleDbPurge} title="Delete Mongo data via /admin/db/purge">
+            Purge DB
           </button>
 
           {kiteRequestToken ? (
