@@ -1339,45 +1339,6 @@ export default function App() {
           <div className="panel miniPanel wide">
             <div className="panelHeader">
               <div className="left">
-                <div style={{ fontWeight: 700 }}>Audit Trail</div>
-                <span className="pill">Latest 5</span>
-              </div>
-            </div>
-            <div className="panelBody">
-              {recentAuditLogs.length ? (
-                <table className="miniTable">
-                  <thead>
-                    <tr>
-                      <th>When</th>
-                      <th>Actor</th>
-                      <th>Action</th>
-                      <th>Status</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {recentAuditLogs.map((row, idx) => (
-                      <tr key={`${row.action || "log"}-${row.createdAt || idx}`}>
-                        <td className="mono">{row.createdAt ? new Date(row.createdAt).toLocaleString() : "-"}</td>
-                        <td className="mono">{row.actor || "-"}</td>
-                        <td>{row.action || "-"}</td>
-                        <td>
-                          <span className={["pill", row.status === "ok" ? "good" : row.status ? "bad" : ""].join(" ")}>
-                            {(row.status || "unknown").toUpperCase()}
-                          </span>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              ) : (
-                <div className="panelPlaceholder">No audit logs yet.</div>
-              )}
-            </div>
-          </div>
-
-          <div className="panel miniPanel wide">
-            <div className="panelHeader">
-              <div className="left">
                 <div style={{ fontWeight: 700 }}>Activity Feed</div>
                 <span className="pill">Latest 6</span>
               </div>
