@@ -189,3 +189,19 @@ export type FnoUniverseResponse = {
   enabled?: boolean;
   universe?: Record<string, any>;
 };
+
+export type CriticalHealthResponse = {
+  ok: boolean;
+  now?: string;
+  halted?: boolean;
+  killSwitch?: boolean;
+  ticker?: {
+    connected?: boolean;
+  };
+  quoteGuard?: Record<string, any>;
+  checks?: Array<{
+    ok: boolean;
+    code: string;
+    meta?: Record<string, any> | null;
+  }>;
+};
