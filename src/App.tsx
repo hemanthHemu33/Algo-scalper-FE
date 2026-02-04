@@ -3,7 +3,6 @@ import { useSettings } from "./lib/settingsContext";
 import {
   useAlertChannels,
   useAlertIncidents,
-  useAuditLogs,
   useCostCalibration,
   useCriticalHealth,
   useEquity,
@@ -276,7 +275,6 @@ export default function App() {
   useStrategyKpis(12000);
   const executionQ = useExecutionQuality(12000);
   useMarketHealth(8000);
-  const auditQ = useAuditLogs(15000);
   const alertChannelsQ = useAlertChannels(20000);
   const alertIncidentsQ = useAlertIncidents(15000);
   const telemetryQ = useTelemetrySnapshot(20000);
