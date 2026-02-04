@@ -451,6 +451,7 @@ export default function App() {
   const [kiteMsg, setKiteMsg] = React.useState<string | null>(null);
   const [kiteErr, setKiteErr] = React.useState<string | null>(null);
   const [kiteRequestToken, setKiteRequestToken] = React.useState<string | null>(null);
+  const [killBusy, setKillBusy] = React.useState(false);
 
   // If the registered Kite redirect URL points to this FE, Kite will redirect back with `request_token`.
   // We catch it here and hand it to the backend for token exchange (api_secret must stay on server).
@@ -491,6 +492,7 @@ export default function App() {
   const connected = Boolean(statusQ.data?.ok);
   const halted = Boolean(statusQ.data?.halted || statusQ.data?.killSwitch);
   const hasKiteSession = Boolean(statusQ.data?.ticker?.hasSession);
+  const killSwitchEnabled = Boolean(statusQ.data?.killSwitch);
 
   const save = () => {
     setSettings({
@@ -520,6 +522,32 @@ export default function App() {
       setKiteMsg("Copied request_token to clipboard");
     } catch {
       setKiteMsg("Copy failed (browser blocked clipboard)");
+    }
+  };
+
+  const toggleKillSwitch = async () => {
+    if (!connected) {
+      pushToast("warn", "Connect to backend before toggling kill switch.");
+      return;
+    }
+    if (killBusy) return;
+    const nextEnabled = !killSwitchEnabled;
+    setKillBusy(true);
+    try {
+      const res = await postJson<{ ok?: boolean; kill?: boolean; error?: string }>(
+        settings,
+        `/admin/kill?enabled=${nextEnabled}`,
+      );
+      if (res?.ok === false) {
+        throw new Error(res?.error || "Kill switch request failed.");
+      }
+      const nextKill = typeof res?.kill === "boolean" ? res.kill : nextEnabled;
+      pushToast(nextKill ? "bad" : "good", nextKill ? "Kill switch enabled." : "Kill switch disabled.");
+      statusQ.refetch();
+    } catch (err: any) {
+      pushToast("bad", err?.message || "Kill switch request failed.");
+    } finally {
+      setKillBusy(false);
     }
   };
 
@@ -572,6 +600,16 @@ export default function App() {
 
           <button className="btn" type="button" onClick={resetLayout} title="Reset charts + blotter layout to default">
             Reset layout
+          </button>
+
+          <button
+            className={["btn", killSwitchEnabled ? "danger" : "good"].join(" ")}
+            type="button"
+            onClick={toggleKillSwitch}
+            disabled={killBusy || !connected}
+            title="Toggle kill switch on backend"
+          >
+            {killBusy ? "Updating…" : killSwitchEnabled ? "Disable Kill Switch" : "Enable Kill Switch"}
           </button>
 
           <span className="pill">{connected ? (halted ? "HALTED / KILL" : "CONNECTED") : "DISCONNECTED"}</span>
