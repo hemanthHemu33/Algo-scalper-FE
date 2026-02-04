@@ -292,7 +292,6 @@ export default function App() {
   const trades = tradesQ.data?.rows || [];
   const alertChannels = alertChannelsQ.data?.rows || [];
   const alertIncidents = alertIncidentsQ.data?.rows || [];
-  const auditRows = auditQ.data?.rows || [];
   const riskLimits = riskQ.data;
   const executionQuality = executionQ.data;
 
