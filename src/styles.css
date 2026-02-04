@@ -341,6 +341,18 @@ button {
   color: var(--text);
 }
 
+.btn.good {
+  background: rgba(46,229,157,0.15);
+  border-color: rgba(46,229,157,0.4);
+  color: var(--good);
+}
+
+.btn.danger {
+  background: rgba(255,107,107,0.15);
+  border-color: rgba(255,107,107,0.4);
+  color: var(--bad);
+}
+
 .btn.small {
   padding: 6px 10px;
   font-size: 12px;
