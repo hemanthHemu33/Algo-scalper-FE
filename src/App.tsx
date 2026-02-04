@@ -269,23 +269,23 @@ export default function App() {
   // Keep a lightweight poll even when WS is connected: some backends may not emit trade events.
   // Fetch a bigger window so token→symbol learning covers more instruments.
   const tradesQ = useTradesRecent(200, socketState.connected ? 5000 : 2000);
-  const equityQ = useEquity(6000);
-  const positionsQ = usePositions(8000);
-  const ordersQ = useOrders(8000);
+  useEquity(6000);
+  usePositions(8000);
+  useOrders(8000);
   const riskQ = useRiskLimits(10000);
-  const strategyQ = useStrategyKpis(12000);
+  useStrategyKpis(12000);
   const executionQ = useExecutionQuality(12000);
-  const marketHealthQ = useMarketHealth(8000);
+  useMarketHealth(8000);
   const auditQ = useAuditLogs(15000);
   const alertChannelsQ = useAlertChannels(20000);
   const alertIncidentsQ = useAlertIncidents(15000);
   const telemetryQ = useTelemetrySnapshot(20000);
   const tradeTelemetryQ = useTradeTelemetrySnapshot(20000);
   const optimizerQ = useOptimizerSnapshot(20000);
-  const rejectionsQ = useRejections(20000);
+  useRejections(20000);
   const costCalibQ = useCostCalibration(30000);
   const calendarQ = useMarketCalendar(30000);
-  const fnoQ = useFnoUniverse(60000);
+  useFnoUniverse(60000);
   const criticalHealthQ = useCriticalHealth(12000);
 
   const tokens: number[] = subsQ.data?.tokens || [];
@@ -382,16 +382,6 @@ export default function App() {
       })
       .slice(0, 5);
   }, [filteredAlertIncidents]);
-
-  const recentAuditLogs = React.useMemo(() => {
-    return [...auditRows]
-      .sort((a, b) => {
-        const ta = new Date(a.createdAt || 0).getTime();
-        const tb = new Date(b.createdAt || 0).getTime();
-        return tb - ta;
-      })
-      .slice(0, 5);
-  }, [auditRows]);
 
   const filteredTradeStats = React.useMemo(
     () => calcTradeStats(filteredTrades),
