@@ -5,6 +5,7 @@ import {
   useAlertIncidents,
   useAuditLogs,
   useCostCalibration,
+  useCriticalHealth,
   useEquity,
   useExecutionQuality,
   useFnoUniverse,
@@ -260,11 +261,15 @@ export default function App() {
   const costCalibQ = useCostCalibration(30000);
   const calendarQ = useMarketCalendar(30000);
   const fnoQ = useFnoUniverse(60000);
+  const criticalHealthQ = useCriticalHealth(12000);
 
   const tokens: number[] = subsQ.data?.tokens || [];
   const trades = tradesQ.data?.rows || [];
   const alertChannels = alertChannelsQ.data?.rows || [];
   const alertIncidents = alertIncidentsQ.data?.rows || [];
+  const auditRows = auditQ.data?.rows || [];
+  const riskLimits = riskQ.data;
+  const executionQuality = executionQ.data;
 
   const tokenLabels = React.useMemo(() => {
     const map = buildTokenLabelsFromTrades(trades);
@@ -343,6 +348,16 @@ export default function App() {
       })
       .slice(0, 5);
   }, [filteredAlertIncidents]);
+
+  const recentAuditLogs = React.useMemo(() => {
+    return [...auditRows]
+      .sort((a, b) => {
+        const ta = new Date(a.createdAt || 0).getTime();
+        const tb = new Date(b.createdAt || 0).getTime();
+        return tb - ta;
+      })
+      .slice(0, 5);
+  }, [auditRows]);
 
   const filteredTradeStats = React.useMemo(() => calcTradeStats(filteredTrades), [filteredTrades]);
   const allTradeStats = React.useMemo(() => calcTradeStats(trades), [trades]);
@@ -535,6 +550,26 @@ export default function App() {
   const [kiteErr, setKiteErr] = React.useState<string | null>(null);
   const [kiteRequestToken, setKiteRequestToken] = React.useState<string | null>(null);
   const [killBusy, setKillBusy] = React.useState(false);
+  const [actionBusy, setActionBusy] = React.useState<Record<string, boolean>>({});
+
+  const runAction = React.useCallback(
+    async <T,>(key: string, label: string, fn: () => Promise<T>, onSuccess?: (res: T) => void) => {
+      setActionBusy((prev) => ({ ...prev, [key]: true }));
+      try {
+        const res: any = await fn();
+        if (res?.ok === false) {
+          throw new Error(res?.error || `${label} failed`);
+        }
+        onSuccess?.(res as T);
+        pushToast("good", `${label} completed`);
+      } catch (e: any) {
+        pushToast("bad", `${label} failed: ${e?.message || String(e)}`);
+      } finally {
+        setActionBusy((prev) => ({ ...prev, [key]: false }));
+      }
+    },
+    [pushToast],
+  );
 
   // If the registered Kite redirect URL points to this FE, Kite will redirect back with `request_token`.
   // We catch it here and hand it to the backend for token exchange (api_secret must stay on server).
@@ -633,6 +668,70 @@ export default function App() {
       setKillBusy(false);
     }
   };
+
+  const criticalChecks = criticalHealthQ.data?.checks || [];
+  const criticalFails = criticalChecks.filter((c) => !c.ok);
+  const criticalOk = criticalHealthQ.data?.ok ?? null;
+
+  const handleHaltReset = () =>
+    runAction("haltReset", "Reset halt", () => postJson(settings, "/admin/halt/reset"), () =>
+      statusQ.refetch(),
+    );
+
+  const handleCalendarReload = () =>
+    runAction("calendarReload", "Reload market calendar", () => postJson(settings, "/admin/market/calendar/reload"), () =>
+      calendarQ.refetch(),
+    );
+
+  const handleRetentionEnsure = () =>
+    runAction("retentionEnsure", "Ensure DB retention indexes", () =>
+      postJson(settings, "/admin/db/retention/ensure"),
+    );
+
+  const handleCostCalibrationReload = () =>
+    runAction(
+      "costCalibrationReload",
+      "Reload cost calibration",
+      () => postJson(settings, "/admin/cost/calibration/reload"),
+      () => costCalibQ.refetch(),
+    );
+
+  const handleOptimizerReload = () =>
+    runAction("optimizerReload", "Reload optimizer", () => postJson(settings, "/admin/optimizer/reload"), () =>
+      optimizerQ.refetch(),
+    );
+
+  const handleOptimizerFlush = () =>
+    runAction("optimizerFlush", "Flush optimizer", () => postJson(settings, "/admin/optimizer/flush"), () =>
+      optimizerQ.refetch(),
+    );
+
+  const handleOptimizerReset = () =>
+    runAction("optimizerReset", "Reset optimizer", () => postJson(settings, "/admin/optimizer/reset"), () =>
+      optimizerQ.refetch(),
+    );
+
+  const handleTelemetryFlush = () =>
+    runAction("telemetryFlush", "Flush telemetry", () => postJson(settings, "/admin/telemetry/flush"), () =>
+      telemetryQ.refetch(),
+    );
+
+  const handleTradeTelemetryFlush = () =>
+    runAction(
+      "tradeTelemetryFlush",
+      "Flush trade telemetry",
+      () => postJson(settings, "/admin/trade-telemetry/flush"),
+      () => tradeTelemetryQ.refetch(),
+    );
+
+  const handleAlertsTest = () =>
+    runAction("alertsTest", "Send test alert", () =>
+      postJson(settings, "/admin/alerts/test", {
+        type: "test",
+        message: "Dashboard test alert",
+        severity: "info",
+      }),
+    );
 
   const staleItems = React.useMemo(() => {
     return Object.values(feedHealth)
@@ -912,6 +1011,80 @@ export default function App() {
           <div className="panel miniPanel">
             <div className="panelHeader">
               <div className="left">
+                <div style={{ fontWeight: 700 }}>Risk Limits</div>
+                <span className="pill">Portfolio</span>
+              </div>
+            </div>
+            <div className="panelBody">
+              {riskLimits ? (
+                <div className="stackList">
+                  <div>
+                    <span className="stackLabel">Max daily loss</span>
+                    <div className="stackValue">{fmtCurrency(riskLimits.maxDailyLoss ?? null)}</div>
+                  </div>
+                  <div>
+                    <span className="stackLabel">Max drawdown</span>
+                    <div className="stackValue">{fmtCurrency(riskLimits.maxDrawdown ?? null)}</div>
+                  </div>
+                  <div>
+                    <span className="stackLabel">Max open trades</span>
+                    <div className="stackValue">{fmtNumber(riskLimits.maxOpenTrades ?? null, 0)}</div>
+                  </div>
+                  <div>
+                    <span className="stackLabel">Max exposure</span>
+                    <div className="stackValue">{fmtCurrency(riskLimits.maxExposureInr ?? null)}</div>
+                  </div>
+                  <div>
+                    <span className="stackLabel">Open positions</span>
+                    <div className="stackValue">{fmtNumber(riskLimits.usage?.openPositions ?? null, 0)}</div>
+                  </div>
+                </div>
+              ) : (
+                <div className="panelPlaceholder">Risk limits not available yet.</div>
+              )}
+            </div>
+          </div>
+
+          <div className="panel miniPanel">
+            <div className="panelHeader">
+              <div className="left">
+                <div style={{ fontWeight: 700 }}>Execution Quality</div>
+                <span className="pill">Recent</span>
+              </div>
+            </div>
+            <div className="panelBody">
+              {executionQuality ? (
+                <div className="stackList">
+                  <div>
+                    <span className="stackLabel">Fill rate</span>
+                    <div className="stackValue">{fmtPercent(executionQuality.fillRate ?? null)}</div>
+                  </div>
+                  <div>
+                    <span className="stackLabel">Avg slippage</span>
+                    <div className="stackValue">{fmtNumber(executionQuality.avgSlippage ?? null)}</div>
+                  </div>
+                  <div>
+                    <span className="stackLabel">Avg latency</span>
+                    <div className="stackValue">
+                      {Number.isFinite(executionQuality.avgLatencyMs)
+                        ? `${fmtNumber(executionQuality.avgLatencyMs ?? null, 0)} ms`
+                        : "-"}
+                    </div>
+                  </div>
+                  <div>
+                    <span className="stackLabel">Rejects</span>
+                    <div className="stackValue">{fmtNumber(executionQuality.rejects ?? null, 0)}</div>
+                  </div>
+                </div>
+              ) : (
+                <div className="panelPlaceholder">Execution stats not available yet.</div>
+              )}
+            </div>
+          </div>
+
+          <div className="panel miniPanel">
+            <div className="panelHeader">
+              <div className="left">
                 <div style={{ fontWeight: 700 }}>Alerting</div>
                 <span className="pill">Range: {rangeConfig.label}</span>
               </div>
@@ -1034,6 +1207,170 @@ export default function App() {
                 </div>
               ) : (
                 <div className="panelPlaceholder">Awaiting trade flow.</div>
+              )}
+            </div>
+          </div>
+
+          <div className="panel miniPanel wide">
+            <div className="panelHeader">
+              <div className="left">
+                <div style={{ fontWeight: 700 }}>Admin Actions</div>
+                <span className={["pill", criticalOk === true ? "good" : criticalOk === false ? "bad" : "warn"].join(" ")}>
+                  Critical Health {criticalOk === null ? "N/A" : criticalOk ? "OK" : "FAIL"}
+                </span>
+              </div>
+              <button className="btn small" type="button" onClick={() => criticalHealthQ.refetch()}>
+                Refresh
+              </button>
+            </div>
+            <div className="panelBody">
+              <div className="healthList">
+                {criticalChecks.length ? (
+                  criticalChecks.map((check, idx) => (
+                    <span key={`${check.code}-${idx}`} className={["pill", check.ok ? "good" : "bad"].join(" ")}>
+                      {check.code}
+                    </span>
+                  ))
+                ) : (
+                  <span className="muted">No critical checks reported yet.</span>
+                )}
+                {criticalFails.length ? (
+                  <span className="muted">Failures: {criticalFails.map((c) => c.code).join(", ")}</span>
+                ) : null}
+              </div>
+              <div className="actionGrid">
+                <button
+                  className="btn"
+                  type="button"
+                  onClick={handleHaltReset}
+                  disabled={actionBusy.haltReset}
+                  title="Clear runtime HALT flag"
+                >
+                  {actionBusy.haltReset ? "Resetting Halt…" : "Reset Halt"}
+                </button>
+                <button
+                  className="btn"
+                  type="button"
+                  onClick={handleCalendarReload}
+                  disabled={actionBusy.calendarReload}
+                  title="Reload market calendar metadata"
+                >
+                  {actionBusy.calendarReload ? "Reloading Calendar…" : "Reload Calendar"}
+                </button>
+                <button
+                  className="btn"
+                  type="button"
+                  onClick={handleRetentionEnsure}
+                  disabled={actionBusy.retentionEnsure}
+                  title="Ensure DB retention indexes"
+                >
+                  {actionBusy.retentionEnsure ? "Ensuring Retention…" : "Ensure Retention"}
+                </button>
+                <button
+                  className="btn"
+                  type="button"
+                  onClick={handleCostCalibrationReload}
+                  disabled={actionBusy.costCalibrationReload}
+                  title="Reload cost calibration from DB"
+                >
+                  {actionBusy.costCalibrationReload ? "Reloading Costs…" : "Reload Costs"}
+                </button>
+                <button
+                  className="btn"
+                  type="button"
+                  onClick={handleOptimizerReload}
+                  disabled={actionBusy.optimizerReload}
+                  title="Reload optimizer state"
+                >
+                  {actionBusy.optimizerReload ? "Reloading Optimizer…" : "Reload Optimizer"}
+                </button>
+                <button
+                  className="btn"
+                  type="button"
+                  onClick={handleOptimizerFlush}
+                  disabled={actionBusy.optimizerFlush}
+                  title="Force optimizer persistence"
+                >
+                  {actionBusy.optimizerFlush ? "Flushing Optimizer…" : "Flush Optimizer"}
+                </button>
+                <button
+                  className="btn"
+                  type="button"
+                  onClick={handleOptimizerReset}
+                  disabled={actionBusy.optimizerReset}
+                  title="Reset optimizer state"
+                >
+                  {actionBusy.optimizerReset ? "Resetting Optimizer…" : "Reset Optimizer"}
+                </button>
+                <button
+                  className="btn"
+                  type="button"
+                  onClick={handleTelemetryFlush}
+                  disabled={actionBusy.telemetryFlush}
+                  title="Flush signal telemetry"
+                >
+                  {actionBusy.telemetryFlush ? "Flushing Telemetry…" : "Flush Telemetry"}
+                </button>
+                <button
+                  className="btn"
+                  type="button"
+                  onClick={handleTradeTelemetryFlush}
+                  disabled={actionBusy.tradeTelemetryFlush}
+                  title="Flush trade telemetry"
+                >
+                  {actionBusy.tradeTelemetryFlush ? "Flushing Trade Telemetry…" : "Flush Trade Telemetry"}
+                </button>
+                <button
+                  className="btn"
+                  type="button"
+                  onClick={handleAlertsTest}
+                  disabled={actionBusy.alertsTest}
+                  title="Send a test notification"
+                >
+                  {actionBusy.alertsTest ? "Sending Alert…" : "Send Test Alert"}
+                </button>
+              </div>
+              <div className="actionNote">
+                Actions require admin permissions (API key) and will log to audit trails on the backend.
+              </div>
+            </div>
+          </div>
+
+          <div className="panel miniPanel wide">
+            <div className="panelHeader">
+              <div className="left">
+                <div style={{ fontWeight: 700 }}>Audit Trail</div>
+                <span className="pill">Latest 5</span>
+              </div>
+            </div>
+            <div className="panelBody">
+              {recentAuditLogs.length ? (
+                <table className="miniTable">
+                  <thead>
+                    <tr>
+                      <th>When</th>
+                      <th>Actor</th>
+                      <th>Action</th>
+                      <th>Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {recentAuditLogs.map((row, idx) => (
+                      <tr key={`${row.action || "log"}-${row.createdAt || idx}`}>
+                        <td className="mono">{row.createdAt ? new Date(row.createdAt).toLocaleString() : "-"}</td>
+                        <td className="mono">{row.actor || "-"}</td>
+                        <td>{row.action || "-"}</td>
+                        <td>
+                          <span className={["pill", row.status === "ok" ? "good" : row.status ? "bad" : ""].join(" ")}>
+                            {(row.status || "unknown").toUpperCase()}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              ) : (
+                <div className="panelPlaceholder">No audit logs yet.</div>
               )}
             </div>
           </div>
