@@ -150,13 +150,18 @@ export function buildTradeMarkers(opts: {
     const sym = t.instrument?.tradingsymbol ? String(t.instrument.tradingsymbol) : String(t.instrument_token);
     const strat = t.strategyId ? String(t.strategyId) : '';
 
+    const hasSide = side === 'BUY' || side === 'SELL';
+    const sl = Number(t.stopLoss);
+    const tgt = Number(t.targetPrice);
+    const entryLabel = `${side || 'TRADE'} ${sym}${strat ? ` (${strat})` : ''}`;
+
     if (side === 'BUY') {
       markers.push({
         time,
         position: 'belowBar',
         shape: 'arrowUp',
         color: '#2ee59d',
-        text: `BUY ${sym}${strat ? ` (${strat})` : ''}`,
+        text: entryLabel,
       });
     } else if (side === 'SELL') {
       markers.push({
@@ -164,7 +169,7 @@ export function buildTradeMarkers(opts: {
         position: 'aboveBar',
         shape: 'arrowDown',
         color: '#ff6b6b',
-        text: `SELL ${sym}${strat ? ` (${strat})` : ''}`,
+        text: entryLabel,
       });
     } else {
       markers.push({
@@ -172,7 +177,27 @@ export function buildTradeMarkers(opts: {
         position: 'aboveBar',
         shape: 'circle',
         color: '#ffcc66',
-        text: `TRADE ${sym}`,
+        text: entryLabel,
+      });
+    }
+
+    if (Number.isFinite(sl)) {
+      markers.push({
+        time,
+        position: hasSide && side === 'BUY' ? 'belowBar' : 'aboveBar',
+        shape: 'circle',
+        color: '#ff6b6b',
+        text: `SL ${sym}`,
+      });
+    }
+
+    if (Number.isFinite(tgt)) {
+      markers.push({
+        time,
+        position: hasSide && side === 'BUY' ? 'aboveBar' : 'belowBar',
+        shape: 'circle',
+        color: '#2ee59d',
+        text: `TGT ${sym}`,
       });
     }
   }
