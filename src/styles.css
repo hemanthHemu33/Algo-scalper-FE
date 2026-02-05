@@ -243,6 +243,75 @@ button {
   text-align: right;
 }
 
+.truthDashboard {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.truthHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 4px;
+}
+
+.truthGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.truthSummaryGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+}
+
+.truthSubGrid {
+  margin-top: 12px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+.truthSubTitle {
+  font-size: 12px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-bottom: 8px;
+}
+
+.truthChips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.truthReport {
+  display: grid;
+  gap: 6px;
+}
+
+.truthReportLine {
+  padding: 8px 10px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: rgba(0,0,0,0.18);
+  font-size: 12px;
+}
+
+.truthTable th,
+.truthTable td {
+  white-space: nowrap;
+}
+
+.mutedRow {
+  color: rgba(255,255,255,0.6);
+}
+
 .main {
   flex: 1;
   min-height: 0;
@@ -695,6 +764,10 @@ button {
 
   .miniPanel.wide {
     grid-column: span 1;
+  }
+
+  .truthGrid {
+    grid-template-columns: 1fr;
   }
 
   .main {
