@@ -265,6 +265,305 @@ function calcTradeStats(rows: TradeRow[]) {
   };
 }
 
+const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
+
+const TIME_BUCKETS: Array<{ label: string; start: number; end: number }> = [
+  { label: "09:15–09:30", start: 9 * 60 + 15, end: 9 * 60 + 30 },
+  { label: "09:30–11:00", start: 9 * 60 + 30, end: 11 * 60 },
+  { label: "11:00–13:30", start: 11 * 60, end: 13 * 60 + 30 },
+  { label: "13:30–15:30", start: 13 * 60 + 30, end: 15 * 60 + 30 },
+  { label: "15:30+", start: 15 * 60 + 30, end: 24 * 60 },
+];
+
+const PREMIUM_BANDS: Array<{ label: string; min: number; max: number }> = [
+  { label: "<80", min: 0, max: 80 },
+  { label: "80–120", min: 80, max: 120 },
+  { label: "120–200", min: 120, max: 200 },
+  { label: "200–350", min: 200, max: 350 },
+  { label: "350+", min: 350, max: Number.POSITIVE_INFINITY },
+];
+
+const HOLD_BUCKETS: Array<{ label: string; min: number; max: number }> = [
+  { label: "<2m", min: 0, max: 2 },
+  { label: "2–5m", min: 2, max: 5 },
+  { label: "5–15m", min: 5, max: 15 },
+  { label: "15–30m", min: 15, max: 30 },
+  { label: "30–60m", min: 30, max: 60 },
+  { label: "60m+", min: 60, max: Number.POSITIVE_INFINITY },
+];
+
+function pickTradeNumber(row: TradeRow, keys: string[]) {
+  const rec = row as Record<string, any>;
+  for (const key of keys) {
+    const value = rec[key];
+    if (value !== undefined && value !== null && value !== "") {
+      const num = Number(value);
+      if (Number.isFinite(num)) return num;
+    }
+  }
+  return null;
+}
+
+function tradePnl(row: TradeRow) {
+  const qty = Number(row.qty);
+  const entry = Number(row.entryPrice);
+  const exit = Number(row.exitPrice);
+  const side = (row.side || "").toUpperCase();
+  if (
+    !Number.isFinite(qty) ||
+    !Number.isFinite(entry) ||
+    !Number.isFinite(exit)
+  )
+    return null;
+  return side === "SELL" ? (entry - exit) * qty : (exit - entry) * qty;
+}
+
+function tradeRisk(row: TradeRow) {
+  const qty = Number(row.qty);
+  const entry = Number(row.entryPrice);
+  const stop = Number(row.stopLoss);
+  const side = (row.side || "").toUpperCase();
+  if (
+    !Number.isFinite(qty) ||
+    !Number.isFinite(entry) ||
+    !Number.isFinite(stop)
+  )
+    return null;
+  const perUnit = side === "SELL" ? stop - entry : entry - stop;
+  if (!Number.isFinite(perUnit) || perUnit <= 0) return null;
+  return perUnit * qty;
+}
+
+function tradeR(row: TradeRow) {
+  const pnl = tradePnl(row);
+  const risk = tradeRisk(row);
+  if (!Number.isFinite(pnl as number) || !Number.isFinite(risk as number))
+    return null;
+  return (pnl as number) / (risk as number);
+}
+
+function tradeHoldMin(row: TradeRow) {
+  const start = row.createdAt ? new Date(row.createdAt).getTime() : NaN;
+  const end = row.updatedAt ? new Date(row.updatedAt).getTime() : NaN;
+  if (!Number.isFinite(start) || !Number.isFinite(end) || end < start)
+    return null;
+  return (end - start) / 60000;
+}
+
+function tradeTimeBucket(row: TradeRow) {
+  const ts = row.createdAt || row.updatedAt;
+  if (!ts) return "Unknown";
+  const ms = new Date(ts).getTime();
+  if (!Number.isFinite(ms)) return "Unknown";
+  const ist = new Date(ms + IST_OFFSET_MS);
+  const minutes = ist.getUTCHours() * 60 + ist.getUTCMinutes();
+  for (const bucket of TIME_BUCKETS) {
+    if (minutes >= bucket.start && minutes < bucket.end) return bucket.label;
+  }
+  return "Unknown";
+}
+
+function tradeRegime(row: TradeRow) {
+  const rec = row as Record<string, any>;
+  return (
+    rec.regime ||
+    rec.marketRegime ||
+    rec.regimeLabel ||
+    rec.regime_state ||
+    "UNKNOWN"
+  );
+}
+
+function tradePremiumBand(row: TradeRow) {
+  const premium =
+    pickTradeNumber(row, [
+      "premium",
+      "entryPremium",
+      "entry_premium",
+      "entryPrice",
+    ]) ?? null;
+  if (!Number.isFinite(premium as number)) return "Unknown";
+  for (const band of PREMIUM_BANDS) {
+    if ((premium as number) >= band.min && (premium as number) < band.max)
+      return band.label;
+  }
+  return "Unknown";
+}
+
+type TruthMetrics = {
+  count: number;
+  wins: number;
+  pnlSum: number;
+  rSum: number;
+  rCount: number;
+  rWinSum: number;
+  rWinCount: number;
+  rLossSum: number;
+  rLossCount: number;
+  slippageSum: number;
+  slippageCount: number;
+  spreadSum: number;
+  spreadCount: number;
+  maeSum: number;
+  maeCount: number;
+  mfeSum: number;
+  mfeCount: number;
+  holdSum: number;
+  holdCount: number;
+};
+
+function initTruthMetrics(): TruthMetrics {
+  return {
+    count: 0,
+    wins: 0,
+    pnlSum: 0,
+    rSum: 0,
+    rCount: 0,
+    rWinSum: 0,
+    rWinCount: 0,
+    rLossSum: 0,
+    rLossCount: 0,
+    slippageSum: 0,
+    slippageCount: 0,
+    spreadSum: 0,
+    spreadCount: 0,
+    maeSum: 0,
+    maeCount: 0,
+    mfeSum: 0,
+    mfeCount: 0,
+    holdSum: 0,
+    holdCount: 0,
+  };
+}
+
+function applyTradeMetrics(metrics: TruthMetrics, row: TradeRow) {
+  metrics.count += 1;
+
+  const pnl = tradePnl(row);
+  if (Number.isFinite(pnl as number)) {
+    metrics.pnlSum += pnl as number;
+    if ((pnl as number) >= 0) metrics.wins += 1;
+  }
+
+  const r = tradeR(row);
+  if (Number.isFinite(r as number)) {
+    metrics.rSum += r as number;
+    metrics.rCount += 1;
+    if ((r as number) >= 0) {
+      metrics.rWinSum += r as number;
+      metrics.rWinCount += 1;
+    } else {
+      metrics.rLossSum += r as number;
+      metrics.rLossCount += 1;
+    }
+  }
+
+  const entrySlip = pickTradeNumber(row, [
+    "entrySlippage",
+    "slippageEntry",
+    "slippage_entry",
+  ]);
+  const exitSlip = pickTradeNumber(row, [
+    "exitSlippage",
+    "slippageExit",
+    "slippage_exit",
+  ]);
+  const totalSlip =
+    pickTradeNumber(row, ["slippage", "totalSlippage", "slippageTotal"]) ??
+    (Number.isFinite(entrySlip as number) || Number.isFinite(exitSlip as number)
+      ? (entrySlip || 0) + (exitSlip || 0)
+      : null);
+
+  if (Number.isFinite(totalSlip as number)) {
+    metrics.slippageSum += totalSlip as number;
+    metrics.slippageCount += 1;
+  }
+
+  const spread = pickTradeNumber(row, [
+    "entrySpread",
+    "spreadAtEntry",
+    "entry_spread",
+    "spread",
+  ]);
+  if (Number.isFinite(spread as number)) {
+    metrics.spreadSum += spread as number;
+    metrics.spreadCount += 1;
+  }
+
+  const mae = pickTradeNumber(row, [
+    "mae",
+    "MAE",
+    "maxAdverseExcursion",
+    "max_adverse_excursion",
+  ]);
+  if (Number.isFinite(mae as number)) {
+    metrics.maeSum += mae as number;
+    metrics.maeCount += 1;
+  }
+
+  const mfe = pickTradeNumber(row, [
+    "mfe",
+    "MFE",
+    "maxFavorableExcursion",
+    "max_favorable_excursion",
+  ]);
+  if (Number.isFinite(mfe as number)) {
+    metrics.mfeSum += mfe as number;
+    metrics.mfeCount += 1;
+  }
+
+  const hold = tradeHoldMin(row);
+  if (Number.isFinite(hold as number)) {
+    metrics.holdSum += hold as number;
+    metrics.holdCount += 1;
+  }
+}
+
+function buildTruthSummary(metrics: TruthMetrics) {
+  const winRate = metrics.count
+    ? (metrics.wins / metrics.count) * 100
+    : null;
+  const avgR = metrics.rCount ? metrics.rSum / metrics.rCount : null;
+  const avgWinR = metrics.rWinCount ? metrics.rWinSum / metrics.rWinCount : null;
+  const avgLossR =
+    metrics.rLossCount ? metrics.rLossSum / metrics.rLossCount : null;
+  const expectancy =
+    avgWinR !== null && avgLossR !== null && winRate !== null
+      ? (winRate / 100) * avgWinR + (1 - winRate / 100) * avgLossR
+      : null;
+  return {
+    count: metrics.count,
+    winRate,
+    avgR,
+    expectancy,
+    avgSlippage: metrics.slippageCount
+      ? metrics.slippageSum / metrics.slippageCount
+      : null,
+    avgSpread: metrics.spreadCount
+      ? metrics.spreadSum / metrics.spreadCount
+      : null,
+    avgMae: metrics.maeCount ? metrics.maeSum / metrics.maeCount : null,
+    avgMfe: metrics.mfeCount ? metrics.mfeSum / metrics.mfeCount : null,
+    avgHoldMin: metrics.holdCount ? metrics.holdSum / metrics.holdCount : null,
+  };
+}
+
+function buildTruthGroups(
+  rows: TradeRow[],
+  keyFn: (row: TradeRow) => string,
+) {
+  const map = new Map<string, TruthMetrics>();
+  for (const row of rows) {
+    const key = keyFn(row);
+    if (!map.has(key)) map.set(key, initTruthMetrics());
+    applyTradeMetrics(map.get(key)!, row);
+  }
+  return Array.from(map.entries()).map(([key, metrics]) => ({
+    key,
+    ...buildTruthSummary(metrics),
+  }));
+}
+
 export default function App() {
   const { settings, setSettings } = useSettings();
   const [draftBase, setDraftBase] = React.useState(settings.baseUrl);
@@ -532,6 +831,153 @@ export default function App() {
       .sort((a, b) => b.pnl - a.pnl)
       .slice(0, 5);
   }, [filteredTrades]);
+
+  const truthSummary = React.useMemo(() => {
+    const metrics = initTruthMetrics();
+    for (const row of filteredTrades || []) {
+      applyTradeMetrics(metrics, row);
+    }
+    return buildTruthSummary(metrics);
+  }, [filteredTrades]);
+
+  const truthByStrategy = React.useMemo(() => {
+    return buildTruthGroups(filteredTrades || [], (row) =>
+      row.strategyId ? String(row.strategyId) : "unassigned",
+    ).sort((a, b) => (b.expectancy ?? -Infinity) - (a.expectancy ?? -Infinity));
+  }, [filteredTrades]);
+
+  const truthByRegime = React.useMemo(() => {
+    return buildTruthGroups(filteredTrades || [], (row) =>
+      String(tradeRegime(row)).toUpperCase(),
+    ).sort((a, b) => (b.expectancy ?? -Infinity) - (a.expectancy ?? -Infinity));
+  }, [filteredTrades]);
+
+  const truthByTimeBucket = React.useMemo(() => {
+    const rows = buildTruthGroups(filteredTrades || [], tradeTimeBucket);
+    const order = new Map(TIME_BUCKETS.map((b, idx) => [b.label, idx]));
+    return rows.sort(
+      (a, b) => (order.get(a.key) ?? 99) - (order.get(b.key) ?? 99),
+    );
+  }, [filteredTrades]);
+
+  const truthByPremiumBand = React.useMemo(() => {
+    const rows = buildTruthGroups(filteredTrades || [], tradePremiumBand);
+    const order = new Map(PREMIUM_BANDS.map((b, idx) => [b.label, idx]));
+    return rows.sort(
+      (a, b) => (order.get(a.key) ?? 99) - (order.get(b.key) ?? 99),
+    );
+  }, [filteredTrades]);
+
+  const truthByStrategyRegime = React.useMemo(() => {
+    return buildTruthGroups(filteredTrades || [], (row) => {
+      const strat = row.strategyId ? String(row.strategyId) : "unassigned";
+      const regime = String(tradeRegime(row)).toUpperCase();
+      return `${strat} • ${regime}`;
+    }).sort((a, b) => (b.expectancy ?? -Infinity) - (a.expectancy ?? -Infinity));
+  }, [filteredTrades]);
+
+  const truthPerTrade = React.useMemo(() => {
+    return [...(filteredTrades || [])]
+      .sort((a, b) => {
+        const ta = new Date(a.updatedAt || a.createdAt || 0).getTime();
+        const tb = new Date(b.updatedAt || b.createdAt || 0).getTime();
+        return tb - ta;
+      })
+      .slice(0, 8)
+      .map((row) => ({
+        id: row.tradeId,
+        strategy: row.strategyId || "unassigned",
+        regime: String(tradeRegime(row)).toUpperCase(),
+        r: tradeR(row),
+        slippage: (() => {
+          const total = pickTradeNumber(row, ["slippage", "totalSlippage"]);
+          if (Number.isFinite(total as number)) return total;
+          const entry = pickTradeNumber(row, ["entrySlippage", "slippageEntry"]);
+          const exit = pickTradeNumber(row, ["exitSlippage", "slippageExit"]);
+          if (
+            !Number.isFinite(entry as number) &&
+            !Number.isFinite(exit as number)
+          )
+            return null;
+          return (entry || 0) + (exit || 0);
+        })(),
+        spread: pickTradeNumber(row, [
+          "entrySpread",
+          "spreadAtEntry",
+          "spread",
+        ]),
+        mae: pickTradeNumber(row, ["mae", "MAE", "maxAdverseExcursion"]),
+        mfe: pickTradeNumber(row, ["mfe", "MFE", "maxFavorableExcursion"]),
+        holdMin: tradeHoldMin(row),
+      }));
+  }, [filteredTrades]);
+
+  const truthHoldDistribution = React.useMemo(() => {
+    const counts = HOLD_BUCKETS.map((bucket) => ({
+      label: bucket.label,
+      count: 0,
+    }));
+    for (const row of filteredTrades || []) {
+      const hold = tradeHoldMin(row);
+      if (!Number.isFinite(hold as number)) continue;
+      const idx = HOLD_BUCKETS.findIndex(
+        (b) => (hold as number) >= b.min && (hold as number) < b.max,
+      );
+      if (idx >= 0) counts[idx].count += 1;
+    }
+    const total = counts.reduce((sum, row) => sum + row.count, 0);
+    return counts.map((row) => ({
+      ...row,
+      pct: total ? (row.count / total) * 100 : 0,
+    }));
+  }, [filteredTrades]);
+
+  const truthCostInsight = React.useMemo(() => {
+    const wins = initTruthMetrics();
+    const losses = initTruthMetrics();
+    for (const row of filteredTrades || []) {
+      const pnl = tradePnl(row);
+      if (Number.isFinite(pnl as number)) {
+        if ((pnl as number) >= 0) applyTradeMetrics(wins, row);
+        else applyTradeMetrics(losses, row);
+      }
+    }
+    const winSummary = buildTruthSummary(wins);
+    const lossSummary = buildTruthSummary(losses);
+    let verdict = "Signal edge + costs";
+    if (
+      winSummary.avgSlippage !== null &&
+      lossSummary.avgSlippage !== null &&
+      winSummary.avgSpread !== null &&
+      lossSummary.avgSpread !== null
+    ) {
+      if (
+        lossSummary.avgSlippage > winSummary.avgSlippage &&
+        lossSummary.avgSpread > winSummary.avgSpread
+      ) {
+        verdict = "Costs (spread + slippage)";
+      } else if (lossSummary.avgSlippage > winSummary.avgSlippage) {
+        verdict = "Slippage-heavy";
+      } else if (lossSummary.avgSpread > winSummary.avgSpread) {
+        verdict = "Wide spreads";
+      } else {
+        verdict = "Signal edge";
+      }
+    }
+    return { winSummary, lossSummary, verdict };
+  }, [filteredTrades]);
+
+  const truthReportLines = React.useMemo(() => {
+    const eligible = truthByStrategyRegime.filter((row) => row.count >= 3);
+    if (!eligible.length) return [];
+    const best = eligible[0];
+    const worst = eligible[eligible.length - 1];
+    return [
+      `${best.key} is ${fmtNumber(best.expectancy, 2)}R`,
+      `${worst.key} is ${fmtNumber(worst.expectancy, 2)}R`,
+      `Loss driver: ${truthCostInsight.verdict}`,
+    ];
+  }, [truthByStrategyRegime, truthCostInsight.verdict]);
 
   const recentActivity = React.useMemo(() => {
     return (filteredTrades || []).slice(0, 6).map((t) => ({
@@ -1917,6 +2363,375 @@ export default function App() {
               ) : (
                 <div className="panelPlaceholder">No activity yet.</div>
               )}
+            </div>
+          </div>
+        </div>
+
+        <div className="truthDashboard">
+          <div className="truthHeader">
+            <div>
+              <div className="overviewTitle">Truth Dashboard</div>
+              <div className="overviewSubtitle">
+                Per-trade diagnostics to explain edge vs cost vs execution.
+              </div>
+            </div>
+            <span className="pill">Range: {rangeConfig.label}</span>
+          </div>
+
+          <div className="truthGrid">
+            <div className="panel miniPanel wide truthSummary">
+              <div className="panelHeader">
+                <div className="left">
+                  <div style={{ fontWeight: 700 }}>Truth Summary</div>
+                  <span className="pill">All trades</span>
+                </div>
+              </div>
+              <div className="panelBody">
+                <div className="truthSummaryGrid">
+                  <div>
+                    <span className="stackLabel">Win rate</span>
+                    <div className="stackValue">
+                      {fmtPercent(truthSummary.winRate)}
+                    </div>
+                  </div>
+                  <div>
+                    <span className="stackLabel">Avg R</span>
+                    <div className="stackValue">
+                      {fmtNumber(truthSummary.avgR)}
+                    </div>
+                  </div>
+                  <div>
+                    <span className="stackLabel">Expectancy (E[R])</span>
+                    <div className="stackValue">
+                      {fmtNumber(truthSummary.expectancy)}
+                    </div>
+                  </div>
+                  <div>
+                    <span className="stackLabel">Avg slippage</span>
+                    <div className="stackValue">
+                      {fmtNumber(truthSummary.avgSlippage)}
+                    </div>
+                  </div>
+                  <div>
+                    <span className="stackLabel">Avg spread</span>
+                    <div className="stackValue">
+                      {fmtNumber(truthSummary.avgSpread)}
+                    </div>
+                  </div>
+                  <div>
+                    <span className="stackLabel">Avg MAE / MFE</span>
+                    <div className="stackValue">
+                      {fmtNumber(truthSummary.avgMae)} /{" "}
+                      {fmtNumber(truthSummary.avgMfe)}
+                    </div>
+                  </div>
+                  <div>
+                    <span className="stackLabel">Avg hold time</span>
+                    <div className="stackValue">
+                      {truthSummary.avgHoldMin
+                        ? `${truthSummary.avgHoldMin.toFixed(1)}m`
+                        : "-"}
+                    </div>
+                  </div>
+                  <div>
+                    <span className="stackLabel">Loss driver</span>
+                    <div className="stackValue">{truthCostInsight.verdict}</div>
+                  </div>
+                </div>
+
+                <div className="truthSubGrid">
+                  <div>
+                    <div className="truthSubTitle">Time-in-trade</div>
+                    <div className="truthChips">
+                      {truthHoldDistribution.map((bucket) => (
+                        <span key={bucket.label} className="pill">
+                          {bucket.label} {bucket.count} (
+                          {fmtNumber(bucket.pct, 0)}%)
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="truthSubTitle">Daily report</div>
+                    <div className="truthReport">
+                      {truthReportLines.length ? (
+                        truthReportLines.map((line) => (
+                          <div key={line} className="truthReportLine">
+                            {line}
+                          </div>
+                        ))
+                      ) : (
+                        <div className="panelPlaceholder">
+                          Not enough trades to summarize yet.
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="panel miniPanel wide">
+              <div className="panelHeader">
+                <div className="left">
+                  <div style={{ fontWeight: 700 }}>
+                    Strategy × Regime Breakdown
+                  </div>
+                  <span className="pill">Top + Bottom</span>
+                </div>
+              </div>
+              <div className="panelBody">
+                {truthByStrategyRegime.length ? (
+                  <table className="miniTable truthTable">
+                    <thead>
+                      <tr>
+                        <th>Combo</th>
+                        <th>Trades</th>
+                        <th>Win %</th>
+                        <th>Avg R</th>
+                        <th>E[R]</th>
+                        <th>Slip</th>
+                        <th>Spread</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {truthByStrategyRegime.slice(0, 6).map((row) => (
+                        <tr key={row.key}>
+                          <td className="mono">{row.key}</td>
+                          <td className="mono">{row.count}</td>
+                          <td className="mono">{fmtPercent(row.winRate)}</td>
+                          <td className="mono">{fmtNumber(row.avgR)}</td>
+                          <td className="mono">{fmtNumber(row.expectancy)}</td>
+                          <td className="mono">{fmtNumber(row.avgSlippage)}</td>
+                          <td className="mono">{fmtNumber(row.avgSpread)}</td>
+                        </tr>
+                      ))}
+                      {truthByStrategyRegime.length > 6
+                        ? truthByStrategyRegime
+                            .slice(-2)
+                            .map((row) => (
+                              <tr key={row.key} className="mutedRow">
+                                <td className="mono">{row.key}</td>
+                                <td className="mono">{row.count}</td>
+                                <td className="mono">
+                                  {fmtPercent(row.winRate)}
+                                </td>
+                                <td className="mono">{fmtNumber(row.avgR)}</td>
+                                <td className="mono">
+                                  {fmtNumber(row.expectancy)}
+                                </td>
+                                <td className="mono">
+                                  {fmtNumber(row.avgSlippage)}
+                                </td>
+                                <td className="mono">
+                                  {fmtNumber(row.avgSpread)}
+                                </td>
+                              </tr>
+                            ))
+                        : null}
+                    </tbody>
+                  </table>
+                ) : (
+                  <div className="panelPlaceholder">
+                    No strategy/regime stats yet.
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="panel miniPanel">
+              <div className="panelHeader">
+                <div className="left">
+                  <div style={{ fontWeight: 700 }}>Regime Stats</div>
+                  <span className="pill">OPEN/TREND/RANGE</span>
+                </div>
+              </div>
+              <div className="panelBody">
+                {truthByRegime.length ? (
+                  <table className="miniTable truthTable">
+                    <thead>
+                      <tr>
+                        <th>Regime</th>
+                        <th>Trades</th>
+                        <th>Win %</th>
+                        <th>E[R]</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {truthByRegime.map((row) => (
+                        <tr key={row.key}>
+                          <td className="mono">{row.key}</td>
+                          <td className="mono">{row.count}</td>
+                          <td className="mono">{fmtPercent(row.winRate)}</td>
+                          <td className="mono">{fmtNumber(row.expectancy)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                ) : (
+                  <div className="panelPlaceholder">No regime stats yet.</div>
+                )}
+              </div>
+            </div>
+
+            <div className="panel miniPanel">
+              <div className="panelHeader">
+                <div className="left">
+                  <div style={{ fontWeight: 700 }}>Time Bucket</div>
+                  <span className="pill">9:15–15:30</span>
+                </div>
+              </div>
+              <div className="panelBody">
+                {truthByTimeBucket.length ? (
+                  <table className="miniTable truthTable">
+                    <thead>
+                      <tr>
+                        <th>Bucket</th>
+                        <th>Trades</th>
+                        <th>E[R]</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {truthByTimeBucket.map((row) => (
+                        <tr key={row.key}>
+                          <td className="mono">{row.key}</td>
+                          <td className="mono">{row.count}</td>
+                          <td className="mono">{fmtNumber(row.expectancy)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                ) : (
+                  <div className="panelPlaceholder">No time stats yet.</div>
+                )}
+              </div>
+            </div>
+
+            <div className="panel miniPanel">
+              <div className="panelHeader">
+                <div className="left">
+                  <div style={{ fontWeight: 700 }}>Premium Bands</div>
+                  <span className="pill">Entry premium</span>
+                </div>
+              </div>
+              <div className="panelBody">
+                {truthByPremiumBand.length ? (
+                  <table className="miniTable truthTable">
+                    <thead>
+                      <tr>
+                        <th>Band</th>
+                        <th>Trades</th>
+                        <th>E[R]</th>
+                        <th>Slip</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {truthByPremiumBand.map((row) => (
+                        <tr key={row.key}>
+                          <td className="mono">{row.key}</td>
+                          <td className="mono">{row.count}</td>
+                          <td className="mono">{fmtNumber(row.expectancy)}</td>
+                          <td className="mono">
+                            {fmtNumber(row.avgSlippage)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                ) : (
+                  <div className="panelPlaceholder">
+                    No premium stats yet.
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="panel miniPanel">
+              <div className="panelHeader">
+                <div className="left">
+                  <div style={{ fontWeight: 700 }}>Strategy Stats</div>
+                  <span className="pill">Edge snapshot</span>
+                </div>
+              </div>
+              <div className="panelBody">
+                {truthByStrategy.length ? (
+                  <table className="miniTable truthTable">
+                    <thead>
+                      <tr>
+                        <th>Strategy</th>
+                        <th>Trades</th>
+                        <th>Win %</th>
+                        <th>E[R]</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {truthByStrategy.map((row) => (
+                        <tr key={row.key}>
+                          <td className="mono">{row.key}</td>
+                          <td className="mono">{row.count}</td>
+                          <td className="mono">{fmtPercent(row.winRate)}</td>
+                          <td className="mono">{fmtNumber(row.expectancy)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                ) : (
+                  <div className="panelPlaceholder">
+                    No strategy stats yet.
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="panel miniPanel wide">
+              <div className="panelHeader">
+                <div className="left">
+                  <div style={{ fontWeight: 700 }}>
+                    Per-Trade Diagnostics
+                  </div>
+                  <span className="pill">Latest 8</span>
+                </div>
+              </div>
+              <div className="panelBody">
+                {truthPerTrade.length ? (
+                  <table className="miniTable truthTable">
+                    <thead>
+                      <tr>
+                        <th>Trade</th>
+                        <th>Strategy</th>
+                        <th>Regime</th>
+                        <th>R</th>
+                        <th>Slip</th>
+                        <th>Spread</th>
+                        <th>MAE</th>
+                        <th>MFE</th>
+                        <th>Hold</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {truthPerTrade.map((row) => (
+                        <tr key={row.id}>
+                          <td className="mono">{row.id}</td>
+                          <td className="mono">{row.strategy}</td>
+                          <td className="mono">{row.regime}</td>
+                          <td className="mono">{fmtNumber(row.r)}</td>
+                          <td className="mono">{fmtNumber(row.slippage)}</td>
+                          <td className="mono">{fmtNumber(row.spread)}</td>
+                          <td className="mono">{fmtNumber(row.mae)}</td>
+                          <td className="mono">{fmtNumber(row.mfe)}</td>
+                          <td className="mono">
+                            {row.holdMin ? `${row.holdMin.toFixed(1)}m` : "-"}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                ) : (
+                  <div className="panelPlaceholder">
+                    No trade diagnostics yet.
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>
