@@ -2,7 +2,7 @@ import React from 'react';
 import { CandleChart } from './CandleChart';
 import { useCandles } from '../lib/hooks';
 import type { CandleRow, TradeRow } from '../types/backend';
-import { getLatestOpenTradeForToken } from '../lib/chartUtils';
+import { getIstDayStartMs, getLatestOpenTradeForToken } from '../lib/chartUtils';
 
 export type ChartConfig = {
   token: number | null;
@@ -113,6 +113,15 @@ export function ChartPanel({
 
   const candlesQ = useCandles(token, intervalMin, 320, pollMs);
   const rows: CandleRow[] = candlesQ.data?.rows || [];
+  const rowsToday = React.useMemo(() => {
+    if (!rows.length || !Number.isFinite(serverNowMs)) return rows;
+    const dayStartMs = getIstDayStartMs(serverNowMs);
+    const dayEndMs = dayStartMs + 24 * 60 * 60 * 1000;
+    return rows.filter((row) => {
+      const ts = new Date(row.ts).getTime();
+      return Number.isFinite(ts) && ts >= dayStartMs && ts < dayEndMs;
+    });
+  }, [rows, serverNowMs]);
 
   const display = token !== null ? labelForToken(token, tokenLabels) : '-';
   const title = `Chart ${index + 1} • ${display} • ${intervalMin}m`;
@@ -150,7 +159,7 @@ export function ChartPanel({
         ? 'warn'
         : 'bad';
 
-  const ltp = rows.length ? Number(rows[rows.length - 1]?.close) : NaN;
+  const ltp = rowsToday.length ? Number(rowsToday[rowsToday.length - 1]?.close) : NaN;
   const openTrade = token !== null ? getLatestOpenTradeForToken(trades, token) : null;
   const breach = computeBreachState(openTrade, ltp);
 
@@ -240,7 +249,11 @@ export function ChartPanel({
           ) : null}
 
           <div className="smallText">
-            {candlesQ.isFetching ? 'updating…' : candlesQ.data ? `candles: ${rows.length}` : 'no data'}
+            {candlesQ.isFetching
+              ? 'updating…'
+              : candlesQ.data
+                ? `candles: ${rowsToday.length}`
+                : 'no data'}
           </div>
         </div>
 
@@ -253,19 +266,21 @@ export function ChartPanel({
       </div>
 
       <div className="chartWrap">
-        {token !== null && rows.length ? (
+        {token !== null && rowsToday.length ? (
           <CandleChart
             key={`${token}-${intervalMin}`}
             token={token}
             title={title}
-            candles={rows}
+            candles={rowsToday}
             trades={trades}
             intervalMin={intervalMin}
             overlayCount={overlayN}
           />
         ) : (
           <div className="panelPlaceholder">
-            {token !== null ? 'Waiting for candles… (need /admin/candles/recent)' : 'Select a token to load candles'}
+            {token !== null
+              ? 'Waiting for today’s candles… (need /admin/candles/recent)'
+              : 'Select a token to load candles'}
           </div>
         )}
       </div>
