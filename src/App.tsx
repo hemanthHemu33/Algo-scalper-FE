@@ -149,6 +149,30 @@ function fmtPercent(n: number | null | undefined) {
   return `${Number(n).toFixed(1)}%`;
 }
 
+function pickTelemetryValue(
+  data: Record<string, any> | null | undefined,
+  keys: string[],
+) {
+  if (!data) return null;
+  for (const key of keys) {
+    const value = data[key];
+    if (value !== undefined && value !== null && value !== "") return value;
+  }
+  return null;
+}
+
+function fmtTelemetryValue(value: any) {
+  if (value === null || value === undefined || value === "") return "-";
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  try {
+    const raw = JSON.stringify(value);
+    return raw.length > 140 ? `${raw.slice(0, 140)}…` : raw;
+  } catch {
+    return String(value);
+  }
+}
+
 function formatSince(ts?: string | null) {
   if (!ts) return "-";
   const ms = new Date(ts).getTime();
@@ -292,6 +316,7 @@ export default function App() {
   const alertIncidents = alertIncidentsQ.data?.rows || [];
   const riskLimits = riskQ.data;
   const executionQuality = executionQ.data;
+  const tradeTelemetry = tradeTelemetryQ.data?.data || null;
 
   const tokenLabels = React.useMemo(() => {
     const map = buildTokenLabelsFromTrades(trades);
@@ -391,6 +416,58 @@ export default function App() {
     allTradeStats.total - filteredTradeStats.total,
   );
   const remainingPnl = allTradeStats.pnl - filteredTradeStats.pnl;
+
+  const tradeTracking = React.useMemo(() => {
+    const targetMode = pickTelemetryValue(tradeTelemetry, [
+      "OPT_TARGET_MODE",
+      "optTargetMode",
+      "targetMode",
+      "target_mode",
+    ]);
+    const targetStatus = pickTelemetryValue(tradeTelemetry, [
+      "targetStatus",
+      "target_state",
+      "targetPending",
+      "pendingTarget",
+      "targetPendingState",
+    ]);
+    const stopMode = pickTelemetryValue(tradeTelemetry, [
+      "OPT_SL_MODE",
+      "optSlMode",
+      "slMode",
+      "stopMode",
+      "stop_mode",
+    ]);
+    const trackerStatus = pickTelemetryValue(tradeTelemetry, [
+      "trackingStatus",
+      "tradeTracking",
+      "trackingState",
+      "tradeTracker",
+      "tracker",
+    ]);
+    const lastEvent = pickTelemetryValue(tradeTelemetry, [
+      "lastEvent",
+      "lastAction",
+      "last_update",
+      "lastUpdate",
+      "event",
+    ]);
+    const lastUpdated = pickTelemetryValue(tradeTelemetry, [
+      "updatedAt",
+      "asOf",
+      "timestamp",
+      "ts",
+    ]);
+
+    return {
+      targetMode,
+      targetStatus,
+      stopMode,
+      trackerStatus,
+      lastEvent,
+      lastUpdated,
+    };
+  }, [tradeTelemetry]);
 
   const strategyStats = React.useMemo(() => {
     const map = new Map<
@@ -1273,6 +1350,74 @@ export default function App() {
               ) : (
                 <div className="panelPlaceholder">
                   No active trade reported by backend.
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="panel miniPanel">
+            <div className="panelHeader">
+              <div className="left">
+                <div style={{ fontWeight: 700 }}>Trade Tracking</div>
+                <span
+                  className={[
+                    "pill",
+                    tradeTelemetryQ.data?.ok ? "good" : "warn",
+                  ].join(" ")}
+                >
+                  {tradeTelemetryQ.data?.ok ? "SNAPSHOT OK" : "NO SNAPSHOT"}
+                </span>
+              </div>
+            </div>
+            <div className="panelBody">
+              {tradeTelemetry ? (
+                <div className="stackList">
+                  <div>
+                    <span className="stackLabel">Tracker</span>
+                    <div className="stackValue">
+                      {fmtTelemetryValue(tradeTracking.trackerStatus)}
+                    </div>
+                  </div>
+                  <div>
+                    <span className="stackLabel">Target mode</span>
+                    <div className="stackValue">
+                      {fmtTelemetryValue(tradeTracking.targetMode)}
+                    </div>
+                  </div>
+                  <div>
+                    <span className="stackLabel">Target status</span>
+                    <div className="stackValue">
+                      {fmtTelemetryValue(tradeTracking.targetStatus)}
+                    </div>
+                  </div>
+                  <div>
+                    <span className="stackLabel">Stop mode</span>
+                    <div className="stackValue">
+                      {fmtTelemetryValue(tradeTracking.stopMode)}
+                    </div>
+                  </div>
+                  <div>
+                    <span className="stackLabel">Last event</span>
+                    <div className="stackValue">
+                      {fmtTelemetryValue(tradeTracking.lastEvent)}
+                    </div>
+                  </div>
+                  <div>
+                    <span className="stackLabel">Last update</span>
+                    <div className="stackValue">
+                      {fmtTelemetryValue(tradeTracking.lastUpdated)}
+                    </div>
+                  </div>
+                  <div>
+                    <span className="stackLabel">Active trade</span>
+                    <div className="stackValue">
+                      {statusQ.data?.activeTradeId || "-"}
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="panelPlaceholder">
+                  No trade telemetry snapshot yet.
                 </div>
               )}
             </div>
