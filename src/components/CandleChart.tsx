@@ -237,6 +237,7 @@ export function CandleChart({ token, title, candles, trades, intervalMin, overla
         color: ltpColor,
         lineWidth: 1,
         lineStyle: LineStyle.Dotted,
+        lineVisible: true,
         axisLabelVisible: true,
         title: 'LTP',
       });
@@ -251,6 +252,7 @@ export function CandleChart({ token, title, candles, trades, intervalMin, overla
           color: 'rgba(106,166,255,0.90)',
           lineWidth: 1,
           lineStyle: LineStyle.Solid,
+          lineVisible: true,
           axisLabelVisible: true,
           title: 'ENTRY',
         });
@@ -263,6 +265,7 @@ export function CandleChart({ token, title, candles, trades, intervalMin, overla
           color: 'rgba(255,107,107,0.90)',
           lineWidth: 2,
           lineStyle: LineStyle.Dotted,
+          lineVisible: true,
           axisLabelVisible: true,
           title: 'SL',
         });
@@ -275,6 +278,7 @@ export function CandleChart({ token, title, candles, trades, intervalMin, overla
           color: 'rgba(46,229,157,0.90)',
           lineWidth: 1,
           lineStyle: LineStyle.Dashed,
+          lineVisible: true,
           axisLabelVisible: true,
           title: 'TGT',
         });
