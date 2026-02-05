@@ -3,6 +3,13 @@ import type { Time } from 'lightweight-charts';
 import type { CandleRow, TradeRow } from '../types/backend';
 
 const IST_TIME_ZONE = 'Asia/Kolkata';
+const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
+
+export function getIstDayStartMs(ms: number): number {
+  const ist = new Date(ms + IST_OFFSET_MS);
+  const startUtcMs = Date.UTC(ist.getUTCFullYear(), ist.getUTCMonth(), ist.getUTCDate());
+  return startUtcMs - IST_OFFSET_MS;
+}
 
 function toIstDate(time: Time): Date {
   if (typeof time === 'number') {

@@ -616,6 +616,7 @@ export default function App() {
     null,
   );
   const [killBusy, setKillBusy] = React.useState(false);
+  const [tradingBusy, setTradingBusy] = React.useState(false);
   const [actionBusy, setActionBusy] = React.useState<Record<string, boolean>>(
     {},
   );
@@ -684,6 +685,7 @@ export default function App() {
   const halted = Boolean(statusQ.data?.halted || statusQ.data?.killSwitch);
   const hasKiteSession = Boolean(statusQ.data?.ticker?.hasSession);
   const killSwitchEnabled = Boolean(statusQ.data?.killSwitch);
+  const tradingEnabled = Boolean(statusQ.data?.tradingEnabled);
 
   const save = () => {
     setSettings({
@@ -743,6 +745,42 @@ export default function App() {
       pushToast("bad", err?.message || "Kill switch request failed.");
     } finally {
       setKillBusy(false);
+    }
+  };
+
+  const toggleTrading = async () => {
+    if (!connected) {
+      pushToast("warn", "Connect to backend before toggling trading.");
+      return;
+    }
+    if (tradingBusy) return;
+    const nextEnabled = !tradingEnabled;
+    setTradingBusy(true);
+    try {
+      const res = await postJson<{
+        ok?: boolean;
+        enabled?: boolean;
+        tradingEnabled?: boolean;
+        error?: string;
+      }>(settings, `/admin/trading?enabled=${nextEnabled}`);
+      if (res?.ok === false) {
+        throw new Error(res?.error || "Trading toggle request failed.");
+      }
+      const nextTrading =
+        typeof res?.tradingEnabled === "boolean"
+          ? res.tradingEnabled
+          : typeof res?.enabled === "boolean"
+            ? res.enabled
+            : nextEnabled;
+      pushToast(
+        nextTrading ? "good" : "warn",
+        nextTrading ? "Trading enabled." : "Trading disabled.",
+      );
+      statusQ.refetch();
+    } catch (err: any) {
+      pushToast("bad", err?.message || "Trading toggle request failed.");
+    } finally {
+      setTradingBusy(false);
     }
   };
 
@@ -923,6 +961,20 @@ export default function App() {
               : killSwitchEnabled
                 ? "Disable Kill Switch"
                 : "Enable Kill Switch"}
+          </button>
+
+          <button
+            className={["btn", tradingEnabled ? "good" : "warn"].join(" ")}
+            type="button"
+            onClick={toggleTrading}
+            disabled={tradingBusy || !connected}
+            title="Toggle trading on backend"
+          >
+            {tradingBusy
+              ? "Updating…"
+              : tradingEnabled
+                ? "Disable Trading"
+                : "Enable Trading"}
           </button>
 
           <span className="pill">

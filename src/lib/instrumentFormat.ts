@@ -135,15 +135,28 @@ export function formatPrettyInstrumentFromTradingSymbol(tradingsymbol?: string |
 export function formatPrettyInstrumentFromTrade(trade: TradeRow): string {
   const tok = Number((trade as any)?.instrument_token);
   const inst: any = (trade as any)?.instrument || {};
-  const ts = inst?.tradingsymbol;
+  const topLevel = trade as any;
+  const ts =
+    inst?.tradingsymbol ||
+    topLevel?.tradingsymbol ||
+    topLevel?.tradingSymbol ||
+    topLevel?.symbol;
   const parsed = parseTradingSymbol(ts) || null;
 
-  const underlying = parsed?.underlying || (ts ? ts.replace(/\d.*$/, "") : "") || "";
+  const underlying =
+    parsed?.underlying || (ts ? String(ts).replace(/\d.*$/, "") : "") || "";
   const expiry =
-    tryFormatExpiry(inst?.expiry) ||
+    tryFormatExpiry(inst?.expiry || topLevel?.expiry) ||
     (parsed?.day && parsed?.mon ? `${parsed.day} ${parsed.mon}` : null);
-  const strike = inst?.strike !== undefined && inst?.strike !== null ? String(inst.strike) : parsed?.strike;
-  const opt = optionWord(inst?.instrument_type || parsed?.optType);
+  const strike =
+    inst?.strike !== undefined && inst?.strike !== null
+      ? String(inst.strike)
+      : topLevel?.strike !== undefined && topLevel?.strike !== null
+        ? String(topLevel.strike)
+        : parsed?.strike;
+  const opt = optionWord(
+    inst?.instrument_type || topLevel?.instrument_type || parsed?.optType,
+  );
 
   const parts: string[] = [];
   if (underlying) parts.push(underlying);
