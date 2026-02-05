@@ -261,8 +261,8 @@ export function CandleChart({ token, title, candles, trades, intervalMin, overla
         const pl = cs.createPriceLine({
           price: Number(openTrade.stopLoss),
           color: 'rgba(255,107,107,0.90)',
-          lineWidth: 1,
-          lineStyle: LineStyle.Dashed,
+          lineWidth: 2,
+          lineStyle: LineStyle.Dotted,
           axisLabelVisible: true,
           title: 'SL',
         });
