@@ -27,6 +27,7 @@ type Props = {
   tradesLoading: boolean;
   socketConnected: boolean;
   serverNowMs: number;
+  currentMs: number;
   isFocused?: boolean;
   onFeedHealth?: (h: FeedHealth) => void;
   panelId?: string;
@@ -85,6 +86,7 @@ export function ChartPanel({
   tradesLoading,
   socketConnected,
   serverNowMs,
+  currentMs,
   isFocused,
   onFeedHealth,
   panelId,
@@ -299,6 +301,7 @@ export function ChartPanel({
             intervalMin={intervalMin}
             overlayCount={overlayN}
             liveLtp={Number.isFinite(liveLtp) ? liveLtp : undefined}
+            currentMs={Number.isFinite(currentMs) ? currentMs : null}
           />
         ) : (
           <div className="panelPlaceholder">

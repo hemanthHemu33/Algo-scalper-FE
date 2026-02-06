@@ -100,6 +100,58 @@ export function toLwCandles(rows: CandleRow[]): LwCandle[] {
     .filter((x) => Number.isFinite(x.time) && Number.isFinite(x.open) && Number.isFinite(x.high) && Number.isFinite(x.low) && Number.isFinite(x.close));
 }
 
+export function applyLiveLtpToCandles(
+  candles: LwCandle[],
+  intervalMin: number,
+  liveLtp: number | undefined,
+  nowMs: number | null,
+): LwCandle[] {
+  if (!candles.length) return candles;
+  if (!Number.isFinite(liveLtp)) return candles;
+  if (!Number.isFinite(intervalMin) || intervalMin <= 0) return candles;
+  if (!Number.isFinite(nowMs)) return candles;
+
+  const intervalSec = Math.max(1, Math.round(intervalMin * 60));
+  const nowSec = Math.floor(Number(nowMs) / 1000);
+  const bucketStart = Math.floor(nowSec / intervalSec) * intervalSec;
+  const last = candles[candles.length - 1];
+
+  if (!Number.isFinite(last.time)) return candles;
+
+  if (last.time === bucketStart) {
+    const next = {
+      ...last,
+      close: Number(liveLtp),
+      high: Math.max(last.high, Number(liveLtp)),
+      low: Math.min(last.low, Number(liveLtp)),
+    };
+    if (next.close === last.close && next.high === last.high && next.low === last.low) {
+      return candles;
+    }
+    const updated = [...candles];
+    updated[updated.length - 1] = next;
+    return updated;
+  }
+
+  if (last.time < bucketStart) {
+    const open = Number.isFinite(last.close) ? last.close : Number(liveLtp);
+    const high = Math.max(open, Number(liveLtp));
+    const low = Math.min(open, Number(liveLtp));
+    return [
+      ...candles,
+      {
+        time: bucketStart,
+        open,
+        high,
+        low,
+        close: Number(liveLtp),
+      },
+    ];
+  }
+
+  return candles;
+}
+
 export function toLwVolume(rows: CandleRow[]): LwVolume[] {
   return (rows || [])
     .map((c) => ({ time: Math.floor(new Date(c.ts).getTime() / 1000), value: Number(c.volume || 0) }))

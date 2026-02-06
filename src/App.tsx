@@ -3056,6 +3056,7 @@ export default function App() {
               tradesLoading={tradesQ.isFetching}
               socketConnected={socketState.connected}
               serverNowMs={serverNowMs}
+              currentMs={currentMs}
               isFocused={focusedChartIndex === i}
               onFeedHealth={onFeedHealthReport}
               onChange={(next) =>
