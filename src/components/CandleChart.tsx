@@ -27,6 +27,7 @@ type Props = {
   trades: TradeRow[];
   intervalMin: number;
   overlayCount?: number;
+  liveLtp?: number;
 };
 
 
@@ -45,7 +46,15 @@ function computeBreachState(trade: TradeRow | null, ltp: number): 'NORMAL' | 'SL
   }
   return 'NORMAL';
 }
-export function CandleChart({ token, title, candles, trades, intervalMin, overlayCount = 0 }: Props) {
+export function CandleChart({
+  token,
+  title,
+  candles,
+  trades,
+  intervalMin,
+  overlayCount = 0,
+  liveLtp,
+}: Props) {
   const containerRef = React.useRef<HTMLDivElement | null>(null);
   const chartRef = React.useRef<IChartApi | null>(null);
   const candleSeriesRef = React.useRef<ISeriesApi<"Candlestick"> | null>(null);
@@ -57,7 +66,8 @@ export function CandleChart({ token, title, candles, trades, intervalMin, overla
   const lwVol = React.useMemo(() => toLwVolume(candles), [candles]);
 
   const lastCandle = candles.length ? candles[candles.length - 1] : null;
-  const ltp = lastCandle ? Number(lastCandle.close) : NaN;
+  const fallbackLtp = lastCandle ? Number(lastCandle.close) : NaN;
+  const ltp = Number.isFinite(liveLtp) ? Number(liveLtp) : fallbackLtp;
   const openTrade = React.useMemo(() => getLatestOpenTradeForToken(trades, token), [trades, token]);
   const breach = computeBreachState(openTrade, ltp);
 
@@ -203,7 +213,8 @@ export function CandleChart({ token, title, candles, trades, intervalMin, overla
     priceLinesRef.current = [];
 
     const lastBar = lwCandles.length ? lwCandles[lwCandles.length - 1] : null;
-    const ltp = lastBar ? Number((lastBar as any).close) : NaN;
+    const fallback = lastBar ? Number((lastBar as any).close) : NaN;
+    const ltp = Number.isFinite(liveLtp) ? Number(liveLtp) : fallback;
 
     const openTrade = getLatestOpenTradeForToken(trades, token);
 
@@ -239,7 +250,7 @@ export function CandleChart({ token, title, candles, trades, intervalMin, overla
         lineStyle: LineStyle.Dotted,
         lineVisible: true,
         axisLabelVisible: true,
-        title: 'LTP',
+        title: Number.isFinite(liveLtp) ? 'LTP LIVE' : 'LTP',
       });
       priceLinesRef.current.push(pl);
     }
@@ -347,7 +358,7 @@ export function CandleChart({ token, title, candles, trades, intervalMin, overla
         chart.timeScale().scrollToRealTime();
       }
     }
-  }, [token, trades, lwCandles, lwVol, overlayCount]);
+  }, [token, trades, lwCandles, lwVol, overlayCount, liveLtp]);
 
   return (
     <div style={{ width: "100%", height: "100%", position: "relative" }}>
@@ -364,7 +375,7 @@ export function CandleChart({ token, title, candles, trades, intervalMin, overla
         <div>{title}</div>
         {Number.isFinite(ltp) ? (
           <div style={{ marginTop: 2, fontSize: 11, color: breach === 'SL' ? 'rgba(255,107,107,0.95)' : breach === 'TGT' ? 'rgba(46,229,157,0.95)' : 'rgba(255,255,255,0.55)' }}>
-            LTP: {ltp.toFixed(2)} {breach === 'SL' ? '• SL breach' : breach === 'TGT' ? '• target hit' : ''}
+            LTP{Number.isFinite(liveLtp) ? ' (live)' : ''}: {ltp.toFixed(2)} {breach === 'SL' ? '• SL breach' : breach === 'TGT' ? '• target hit' : ''}
           </div>
         ) : null}
       </div>
