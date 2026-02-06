@@ -16,6 +16,7 @@ import {
   buildTradeMarkers,
   getLatestOpenTradeForToken,
   getLastTradesForToken,
+  applyLiveLtpToCandles,
   formatIstDateTime,
   formatIstTick,
 } from "../lib/chartUtils";
@@ -28,6 +29,7 @@ type Props = {
   intervalMin: number;
   overlayCount?: number;
   liveLtp?: number;
+  currentMs?: number | null;
 };
 
 
@@ -54,6 +56,7 @@ export function CandleChart({
   intervalMin,
   overlayCount = 0,
   liveLtp,
+  currentMs,
 }: Props) {
   const containerRef = React.useRef<HTMLDivElement | null>(null);
   const chartRef = React.useRef<IChartApi | null>(null);
@@ -63,7 +66,20 @@ export function CandleChart({
   const didInitViewRef = React.useRef(false);
 
   const lwCandles = React.useMemo(() => toLwCandles(candles), [candles]);
+  const liveCandles = React.useMemo(
+    () => applyLiveLtpToCandles(lwCandles, intervalMin, liveLtp, currentMs ?? null),
+    [lwCandles, intervalMin, liveLtp, currentMs],
+  );
   const lwVol = React.useMemo(() => toLwVolume(candles), [candles]);
+  const liveVol = React.useMemo(() => {
+    if (!liveCandles.length) return lwVol;
+    const lastLive = liveCandles[liveCandles.length - 1];
+    const lastVol = lwVol[lwVol.length - 1];
+    if (!lastVol || lastVol.time !== lastLive.time) {
+      return [...lwVol, { time: lastLive.time, value: lastVol?.value ?? 0 }];
+    }
+    return lwVol;
+  }, [lwVol, liveCandles]);
 
   const lastCandle = candles.length ? candles[candles.length - 1] : null;
   const fallbackLtp = lastCandle ? Number(lastCandle.close) : NaN;
@@ -178,7 +194,7 @@ export function CandleChart({
     const vs = volSeriesRef.current;
     if (!cs || !vs) return;
 
-    const data = lwCandles as CandlestickData[];
+    const data = liveCandles as CandlestickData[];
     cs.setData(data);
 
     // If the user drags the price axis, autoscale can get disabled.
@@ -189,7 +205,7 @@ export function CandleChart({
       // ignore
     }
 
-    const volData = lwVol.map((v) => ({
+    const volData = liveVol.map((v) => ({
       time: v.time,
       value: v.value,
       color: "rgba(255,255,255,0.25)",
@@ -199,7 +215,7 @@ export function CandleChart({
     const markers = buildTradeMarkers({
       token,
       trades,
-      candles: lwCandles,
+      candles: liveCandles,
       max: 30,
     });
     cs.setMarkers(markers);
@@ -212,7 +228,7 @@ export function CandleChart({
     }
     priceLinesRef.current = [];
 
-    const lastBar = lwCandles.length ? lwCandles[lwCandles.length - 1] : null;
+    const lastBar = liveCandles.length ? liveCandles[liveCandles.length - 1] : null;
     const fallback = lastBar ? Number((lastBar as any).close) : NaN;
     const ltp = Number.isFinite(liveLtp) ? Number(liveLtp) : fallback;
 
@@ -358,7 +374,7 @@ export function CandleChart({
         chart.timeScale().scrollToRealTime();
       }
     }
-  }, [token, trades, lwCandles, lwVol, overlayCount, liveLtp]);
+  }, [token, trades, liveCandles, liveVol, overlayCount, liveLtp]);
 
   return (
     <div style={{ width: "100%", height: "100%", position: "relative" }}>
