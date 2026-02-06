@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { io, type Socket } from "socket.io-client";
 import { useSettings } from "./settingsContext";
-import type { CandleRow, StatusResponse, TradeRow } from "../types/backend";
+import type { CandleRow, LiveLtpResponse, StatusResponse, TradeRow } from "../types/backend";
 
 type SocketState = {
   connected: boolean;
@@ -16,6 +16,10 @@ type CandlePayload =
       rows?: CandleRow[];
     }
   | CandleRow;
+
+type LtpPayload = LiveLtpResponse & {
+  instrument_token?: number;
+};
 
 const SOCKET_PATH = import.meta.env.VITE_SOCKET_PATH || "/socket.io";
 
@@ -80,6 +84,7 @@ export function useSocketBridge(): SocketState {
     const subsKey = ["subs", baseUrl, settings.apiKey];
     const tradesKeyPrefix = ["tradesRecent", baseUrl, settings.apiKey];
     const candlesKeyPrefix = ["candles", baseUrl, settings.apiKey];
+    const ltpKeyPrefix = ["ltp", baseUrl, settings.apiKey];
 
     const updateStatus = (payload: StatusResponse) => {
       if (!payload) return;
@@ -150,6 +155,32 @@ export function useSocketBridge(): SocketState {
       setLastEvent("candles");
     };
 
+    const updateLtp = (payload: LtpPayload | LtpPayload[]) => {
+      const incoming = Array.isArray(payload) ? payload : [payload];
+      if (!incoming.length) return;
+      const queries = queryClient
+        .getQueryCache()
+        .findAll({ queryKey: ltpKeyPrefix });
+      for (const row of incoming) {
+        const token = Number(
+          row?.token ?? row?.instrument_token,
+        );
+        if (!Number.isFinite(token)) continue;
+        for (const q of queries) {
+          const key = q.queryKey as (string | number)[];
+          const keyToken = Number(key[3]);
+          if (keyToken !== token) continue;
+          queryClient.setQueryData(key, (old) => ({
+            ...(old as LiveLtpResponse | undefined),
+            ...row,
+            token,
+            ok: true,
+          }));
+        }
+      }
+      setLastEvent("ltp");
+    };
+
     socket.on("connect", () => setConnected(true));
     socket.on("disconnect", () => setConnected(false));
     socket.on("status", updateStatus);
@@ -162,6 +193,9 @@ export function useSocketBridge(): SocketState {
     socket.on("candle", updateCandles);
     socket.on("candles", updateCandles);
     socket.on("candles:recent", updateCandles);
+    socket.on("ltp", updateLtp);
+    socket.on("ltp:update", updateLtp);
+    socket.on("tick", updateLtp);
 
     return () => {
       socket.removeAllListeners();

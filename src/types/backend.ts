@@ -199,6 +199,16 @@ export type FnoUniverseResponse = {
   universe?: Record<string, any>;
 };
 
+export type LiveLtpResponse = {
+  ok?: boolean;
+  token?: number;
+  instrument_token?: number;
+  ltp?: number;
+  lastPrice?: number;
+  price?: number;
+  ts?: string;
+};
+
 export type CriticalHealthResponse = {
   ok: boolean;
   now?: string;

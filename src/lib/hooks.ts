@@ -22,6 +22,7 @@ import type {
   MarketCalendarResponse,
   FnoUniverseResponse,
   CriticalHealthResponse,
+  LiveLtpResponse,
 } from '../types/backend';
 
 export function useStatus(pollMs: number | false = 2000) {
@@ -69,6 +70,20 @@ export function useCandles(
         token,
         intervalMin,
         limit,
+      }),
+    refetchInterval: pollMs,
+    retry: false,
+  });
+}
+
+export function useLiveLtp(token: number | null, pollMs: number | false = 1000) {
+  const { settings } = useSettings();
+  return useQuery({
+    queryKey: ['ltp', settings.baseUrl, settings.apiKey, token],
+    enabled: !!token,
+    queryFn: () =>
+      getJson<LiveLtpResponse>(settings, '/admin/ltp', {
+        token,
       }),
     refetchInterval: pollMs,
     retry: false,

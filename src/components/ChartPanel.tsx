@@ -1,6 +1,6 @@
 import React from 'react';
 import { CandleChart } from './CandleChart';
-import { useCandles } from '../lib/hooks';
+import { useCandles, useLiveLtp } from '../lib/hooks';
 import type { CandleRow, TradeRow } from '../types/backend';
 import { getIstDayStartMs, getLatestOpenTradeForToken } from '../lib/chartUtils';
 
@@ -63,6 +63,19 @@ function computeBreachState(trade: TradeRow | null, ltp: number): 'NORMAL' | 'SL
   return 'NORMAL';
 }
 
+function pickLiveLtp(value: any): number {
+  const candidates = [
+    value?.ltp,
+    value?.lastPrice,
+    value?.price,
+  ];
+  for (const c of candidates) {
+    const num = Number(c);
+    if (Number.isFinite(num)) return num;
+  }
+  return NaN;
+}
+
 export function ChartPanel({
   index,
   config,
@@ -112,6 +125,7 @@ export function ChartPanel({
   }, [isFullscreen]);
 
   const candlesQ = useCandles(token, intervalMin, 320, pollMs);
+  const liveLtpQ = useLiveLtp(token, socketConnected ? 1000 : 1500);
   const rows: CandleRow[] = candlesQ.data?.rows || [];
   const rowsToday = React.useMemo(() => {
     if (!rows.length || !Number.isFinite(serverNowMs)) return rows;
@@ -159,7 +173,9 @@ export function ChartPanel({
         ? 'warn'
         : 'bad';
 
-  const ltp = rowsToday.length ? Number(rowsToday[rowsToday.length - 1]?.close) : NaN;
+  const liveLtp = pickLiveLtp(liveLtpQ.data);
+  const fallbackLtp = rowsToday.length ? Number(rowsToday[rowsToday.length - 1]?.close) : NaN;
+  const ltp = Number.isFinite(liveLtp) ? liveLtp : fallbackLtp;
   const openTrade = token !== null ? getLatestOpenTradeForToken(trades, token) : null;
   const breach = computeBreachState(openTrade, ltp);
 
@@ -243,7 +259,14 @@ export function ChartPanel({
           ) : null}
 
           {breach !== 'NORMAL' ? (
-            <span className={['pill', breach === 'SL' ? 'bad' : 'good'].join(' ')} title="Based on latest candle close (proxy for LTP)">
+            <span
+              className={['pill', breach === 'SL' ? 'bad' : 'good'].join(' ')}
+              title={
+                Number.isFinite(liveLtp)
+                  ? 'Based on live LTP'
+                  : 'Based on latest candle close (proxy for LTP)'
+              }
+            >
               {breach === 'SL' ? 'SL BREACH' : 'TGT HIT'}
             </span>
           ) : null}
@@ -275,6 +298,7 @@ export function ChartPanel({
             trades={trades}
             intervalMin={intervalMin}
             overlayCount={overlayN}
+            liveLtp={Number.isFinite(liveLtp) ? liveLtp : undefined}
           />
         ) : (
           <div className="panelPlaceholder">
