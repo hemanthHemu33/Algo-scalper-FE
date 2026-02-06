@@ -749,6 +749,126 @@ export default function App() {
     [timeStopMs, currentMs],
   );
 
+  const [feedHealth, setFeedHealth] = React.useState<Record<number, FeedHealth>>(
+    {},
+  );
+  const staleRef = React.useRef<Record<number, boolean>>({});
+  const [dateRange, setDateRange] = React.useState<DateRangeKey>("1D");
+
+  const rangeConfig = React.useMemo(
+    () =>
+      DATE_RANGE_OPTIONS.find((opt) => opt.key === dateRange) ||
+      DATE_RANGE_OPTIONS[0],
+    [dateRange],
+  );
+
+  const latestTradeMs = React.useMemo(() => {
+    let max = Number.NEGATIVE_INFINITY;
+    for (const t of trades || []) {
+      const ts = new Date(t.updatedAt || t.createdAt || "").getTime();
+      if (Number.isFinite(ts)) max = Math.max(max, ts);
+    }
+    return Number.isFinite(max) ? max : null;
+  }, [trades]);
+
+  const latestFeedMs = React.useMemo(() => {
+    let max = Number.NEGATIVE_INFINITY;
+    for (const h of Object.values(feedHealth)) {
+      const ts = h.lastTs ? new Date(h.lastTs).getTime() : NaN;
+      if (Number.isFinite(ts)) max = Math.max(max, ts);
+    }
+    return Number.isFinite(max) ? max : null;
+  }, [feedHealth]);
+
+  const latestDataMs = React.useMemo(() => {
+    const max = Math.max(
+      Number.isFinite(latestTradeMs as number) ? (latestTradeMs as number) : NaN,
+      Number.isFinite(latestFeedMs as number) ? (latestFeedMs as number) : NaN,
+    );
+    return Number.isFinite(max) ? max : null;
+  }, [latestFeedMs, latestTradeMs]);
+
+  const latestDataDayStartMs = React.useMemo(() => {
+    if (!Number.isFinite(latestDataMs as number)) return null;
+    return getIstDayStartMs(Number(latestDataMs));
+  }, [latestDataMs]);
+
+  const currentDayStartMs = React.useMemo(
+    () => getIstDayStartMs(serverNowMs),
+    [serverNowMs],
+  );
+
+  const dataDayStatus = React.useMemo(() => {
+    if (!Number.isFinite(latestDataMs as number)) {
+      return { label: "NO DATA", tone: "bad" };
+    }
+    if (latestDataDayStartMs === currentDayStartMs) {
+      return { label: "LIVE", tone: "good" };
+    }
+    return { label: "LAST", tone: "warn" };
+  }, [currentDayStartMs, latestDataDayStartMs, latestDataMs]);
+
+  const rangeWindow = React.useMemo(() => {
+    if (rangeConfig.key === "LAST") {
+      if (!Number.isFinite(latestDataDayStartMs as number)) {
+        return { start: null, end: null };
+      }
+      return {
+        start: latestDataDayStartMs,
+        end: Number(latestDataDayStartMs) + 24 * 60 * 60 * 1000,
+      };
+    }
+    if (!rangeConfig.days) return { start: null, end: null };
+    return {
+      start: serverNowMs - rangeConfig.days * 24 * 60 * 60 * 1000,
+      end: serverNowMs,
+    };
+  }, [rangeConfig.days, rangeConfig.key, latestDataDayStartMs, serverNowMs]);
+
+  const rangeLabel = React.useMemo(() => {
+    if (
+      rangeConfig.key === "LAST" &&
+      Number.isFinite(latestDataDayStartMs as number)
+    ) {
+      return `${rangeConfig.label} (${formatIstDate(latestDataDayStartMs)})`;
+    }
+    return rangeConfig.label;
+  }, [latestDataDayStartMs, rangeConfig.key, rangeConfig.label]);
+
+  const rangeHint = React.useMemo(() => {
+    if (rangeConfig.key === "LAST") {
+      return Number.isFinite(latestDataDayStartMs as number)
+        ? `last trading day (${formatIstDate(latestDataDayStartMs)})`
+        : "last trading day";
+    }
+    if (rangeConfig.days) return `last ${rangeConfig.days}d`;
+    return "all time";
+  }, [latestDataDayStartMs, rangeConfig.days, rangeConfig.key]);
+
+  const filteredTrades = React.useMemo(() => {
+    const start = rangeWindow.start;
+    const end = rangeWindow.end;
+    if (start == null) return trades;
+    return (trades || []).filter((t) => {
+      const ts = new Date(t.updatedAt || t.createdAt || "").getTime();
+      if (!Number.isFinite(ts)) return false;
+      if (end && ts >= end) return false;
+      return ts >= start;
+    });
+  }, [rangeWindow.end, rangeWindow.start, trades]);
+
+  const filteredAlertIncidents = React.useMemo(() => {
+    const start = rangeWindow.start;
+    const end = rangeWindow.end;
+    if (start == null) return alertIncidents;
+    return (alertIncidents || []).filter((incident) => {
+      const ts = new Date(incident.createdAt || "").getTime();
+      if (!Number.isFinite(ts)) return false;
+      if (end && ts >= end) return false;
+      return ts >= start;
+    });
+  }, [alertIncidents, rangeWindow.end, rangeWindow.start]);
+
   const alertIncidentStats = React.useMemo(() => {
     const counts = {
       total: 0,
@@ -1153,118 +1273,6 @@ export default function App() {
     },
     [pushToast, tokenLabels],
   );
-
-  const [dateRange, setDateRange] = React.useState<DateRangeKey>("1D");
-
-  const rangeConfig = React.useMemo(
-    () =>
-      DATE_RANGE_OPTIONS.find((opt) => opt.key === dateRange) ||
-      DATE_RANGE_OPTIONS[0],
-    [dateRange],
-  );
-
-  const latestTradeMs = React.useMemo(() => {
-    let max = Number.NEGATIVE_INFINITY;
-    for (const t of trades || []) {
-      const ts = new Date(t.updatedAt || t.createdAt || "").getTime();
-      if (Number.isFinite(ts)) max = Math.max(max, ts);
-    }
-    return Number.isFinite(max) ? max : null;
-  }, [trades]);
-
-  const latestFeedMs = React.useMemo(() => {
-    let max = Number.NEGATIVE_INFINITY;
-    for (const h of Object.values(feedHealth)) {
-      const ts = h.lastTs ? new Date(h.lastTs).getTime() : NaN;
-      if (Number.isFinite(ts)) max = Math.max(max, ts);
-    }
-    return Number.isFinite(max) ? max : null;
-  }, [feedHealth]);
-
-  const latestDataMs = React.useMemo(() => {
-    const max = Math.max(
-      Number.isFinite(latestTradeMs as number) ? (latestTradeMs as number) : NaN,
-      Number.isFinite(latestFeedMs as number) ? (latestFeedMs as number) : NaN,
-    );
-    return Number.isFinite(max) ? max : null;
-  }, [latestFeedMs, latestTradeMs]);
-
-  const latestDataDayStartMs = React.useMemo(() => {
-    if (!Number.isFinite(latestDataMs as number)) return null;
-    return getIstDayStartMs(Number(latestDataMs));
-  }, [latestDataMs]);
-
-  const currentDayStartMs = React.useMemo(
-    () => getIstDayStartMs(serverNowMs),
-    [serverNowMs],
-  );
-
-  const dataDayStatus = React.useMemo(() => {
-    if (!Number.isFinite(latestDataMs as number)) {
-      return { label: "NO DATA", tone: "bad" };
-    }
-    if (latestDataDayStartMs === currentDayStartMs) {
-      return { label: "LIVE", tone: "good" };
-    }
-    return { label: "LAST", tone: "warn" };
-  }, [currentDayStartMs, latestDataDayStartMs, latestDataMs]);
-
-  const rangeWindow = React.useMemo(() => {
-    if (rangeConfig.key === "LAST") {
-      if (!Number.isFinite(latestDataDayStartMs as number)) {
-        return { start: null, end: null };
-      }
-      return {
-        start: latestDataDayStartMs,
-        end: Number(latestDataDayStartMs) + 24 * 60 * 60 * 1000,
-      };
-    }
-    if (!rangeConfig.days) return { start: null, end: null };
-    return {
-      start: serverNowMs - rangeConfig.days * 24 * 60 * 60 * 1000,
-      end: serverNowMs,
-    };
-  }, [rangeConfig.days, rangeConfig.key, latestDataDayStartMs, serverNowMs]);
-
-  const rangeLabel = React.useMemo(() => {
-    if (
-      rangeConfig.key === "LAST" &&
-      Number.isFinite(latestDataDayStartMs as number)
-    ) {
-      return `${rangeConfig.label} (${formatIstDate(latestDataDayStartMs)})`;
-    }
-    return rangeConfig.label;
-  }, [latestDataDayStartMs, rangeConfig.key, rangeConfig.label]);
-
-  const rangeHint = React.useMemo(() => {
-    if (rangeConfig.key === "LAST") {
-      return Number.isFinite(latestDataDayStartMs as number)
-        ? `last trading day (${formatIstDate(latestDataDayStartMs)})`
-        : "last trading day";
-    }
-    if (rangeConfig.days) return `last ${rangeConfig.days}d`;
-    return "all time";
-  }, [latestDataDayStartMs, rangeConfig.days, rangeConfig.key]);
-
-  const filteredTrades = React.useMemo(() => {
-    if (!rangeWindow.start) return trades;
-    return (trades || []).filter((t) => {
-      const ts = new Date(t.updatedAt || t.createdAt || "").getTime();
-      if (!Number.isFinite(ts)) return false;
-      if (rangeWindow.end && ts >= rangeWindow.end) return false;
-      return ts >= rangeWindow.start;
-    });
-  }, [rangeWindow.end, rangeWindow.start, trades]);
-
-  const filteredAlertIncidents = React.useMemo(() => {
-    if (!rangeWindow.start) return alertIncidents;
-    return (alertIncidents || []).filter((incident) => {
-      const ts = new Date(incident.createdAt || "").getTime();
-      if (!Number.isFinite(ts)) return false;
-      if (rangeWindow.end && ts >= rangeWindow.end) return false;
-      return ts >= rangeWindow.start;
-    });
-  }, [alertIncidents, rangeWindow.end, rangeWindow.start]);
 
   const focusToken = React.useCallback(
     (tok: number) => {
