@@ -1134,11 +1134,6 @@ export default function App() {
   >(null);
   const focusTimerRef = React.useRef<number | null>(null);
 
-  const [feedHealth, setFeedHealth] = React.useState<
-    Record<number, FeedHealth>
-  >({});
-  const staleRef = React.useRef<Record<number, boolean>>({});
-
   const onFeedHealthReport = React.useCallback(
     (h: FeedHealth) => {
       setFeedHealth((prev) => ({ ...prev, [h.index]: h }));
