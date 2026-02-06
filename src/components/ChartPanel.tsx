@@ -95,17 +95,16 @@ export function ChartPanel({
   const [isFullscreen, setIsFullscreen] = React.useState(false);
   const [overlayN, setOverlayN] = React.useState<number>(0);
 
-  // Even if WS is connected, some backends don't emit candle events over WS.
-  // If we disable polling in that case, charts freeze and you'll see "STALE FEED".
-  // So we keep a lightweight polling fallback and speed it up when we detect lag.
-  const [pollMs, setPollMs] = React.useState<number>(socketConnected ? 5000 : 2500);
+  const [pollMs, setPollMs] = React.useState<number | false>(
+    socketConnected ? false : 2500,
+  );
 
   const token = config.token;
   const intervalMin = config.intervalMin;
 
   // Reset polling baseline when the feed mode or chart identity changes.
   React.useEffect(() => {
-    setPollMs(socketConnected ? 5000 : 2500);
+    setPollMs(socketConnected ? false : 2500);
   }, [socketConnected, token, intervalMin]);
 
   React.useEffect(() => {
@@ -127,7 +126,7 @@ export function ChartPanel({
   }, [isFullscreen]);
 
   const candlesQ = useCandles(token, intervalMin, 320, pollMs);
-  const liveLtpQ = useLiveLtp(token, socketConnected ? 1000 : 1500);
+  const liveLtpQ = useLiveLtp(token, socketConnected ? false : 1500);
   const rows: CandleRow[] = candlesQ.data?.rows || [];
   const rowsToday = React.useMemo(() => {
     if (!rows.length || !Number.isFinite(serverNowMs)) return rows;
@@ -157,10 +156,11 @@ export function ChartPanel({
   // - When lag grows (no WS candle updates, or backend slow), speed up polling to catch up.
   // - When feed is healthy again, return to the baseline cadence.
   React.useEffect(() => {
+    if (socketConnected) return;
     if (token === null) return;
     if (!Number.isFinite(lagSec)) return;
 
-    const baseline = socketConnected ? 5000 : 2500;
+    const baseline = 2500;
     const next =
       lagSec > staleCut ? 1500 : lagSec > goodCut ? 2500 : baseline;
 
@@ -249,9 +249,13 @@ export function ChartPanel({
 
           <span
             className={['pill', socketConnected ? 'good' : 'warn'].join(' ')}
-            title={socketConnected ? `WS connected • polling fallback ${pollMs}ms` : `Polling ${pollMs}ms`}
+            title={
+              socketConnected
+                ? 'WS connected • polling disabled'
+                : `Polling ${pollMs}ms`
+            }
           >
-            {socketConnected ? 'WS+POLL' : 'POLL'}
+            {socketConnected ? 'WS' : 'POLL'}
           </span>
 
           {token !== null && rows.length ? (

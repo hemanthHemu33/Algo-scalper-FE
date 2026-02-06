@@ -680,28 +680,28 @@ export default function App() {
   const saved = React.useMemo(() => loadLayout(), []);
 
   const socketState = useSocketBridge();
-  const statusQ = useStatus(2000);
-  const subsQ = useSubscriptions(5000);
-  // Keep a lightweight poll even when WS is connected: some backends may not emit trade events.
+  const wsPoll = socketState.connected ? false : undefined;
+  const statusQ = useStatus(wsPoll ?? 2000);
+  const subsQ = useSubscriptions(wsPoll ?? 5000);
   // Fetch a bigger window so token→symbol learning covers more instruments.
-  const tradesQ = useTradesRecent(200, socketState.connected ? 5000 : 2000);
-  useEquity(6000);
-  usePositions(8000);
-  useOrders(8000);
-  const riskQ = useRiskLimits(10000);
-  useStrategyKpis(12000);
-  const executionQ = useExecutionQuality(12000);
-  useMarketHealth(8000);
-  const alertChannelsQ = useAlertChannels(20000);
-  const alertIncidentsQ = useAlertIncidents(15000);
-  const telemetryQ = useTelemetrySnapshot(20000);
-  const tradeTelemetryQ = useTradeTelemetrySnapshot(20000);
-  const optimizerQ = useOptimizerSnapshot(20000);
-  useRejections(20000);
-  const costCalibQ = useCostCalibration(30000);
-  const calendarQ = useMarketCalendar(30000);
-  useFnoUniverse(60000);
-  const criticalHealthQ = useCriticalHealth(12000);
+  const tradesQ = useTradesRecent(200, wsPoll ?? 2000);
+  useEquity(wsPoll ?? 6000);
+  usePositions(wsPoll ?? 8000);
+  useOrders(wsPoll ?? 8000);
+  const riskQ = useRiskLimits(wsPoll ?? 10000);
+  useStrategyKpis(wsPoll ?? 12000);
+  const executionQ = useExecutionQuality(wsPoll ?? 12000);
+  useMarketHealth(wsPoll ?? 8000);
+  const alertChannelsQ = useAlertChannels(wsPoll ?? 20000);
+  const alertIncidentsQ = useAlertIncidents(wsPoll ?? 15000);
+  const telemetryQ = useTelemetrySnapshot(wsPoll ?? 20000);
+  const tradeTelemetryQ = useTradeTelemetrySnapshot(wsPoll ?? 20000);
+  const optimizerQ = useOptimizerSnapshot(wsPoll ?? 20000);
+  useRejections(wsPoll ?? 20000);
+  const costCalibQ = useCostCalibration(wsPoll ?? 30000);
+  const calendarQ = useMarketCalendar(wsPoll ?? 30000);
+  useFnoUniverse(wsPoll ?? 60000);
+  const criticalHealthQ = useCriticalHealth(wsPoll ?? 12000);
 
   const tokens: number[] = subsQ.data?.tokens || [];
   const trades = tradesQ.data?.rows || [];
