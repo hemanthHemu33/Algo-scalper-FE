@@ -25,6 +25,13 @@ export type TradeRow = {
   stopLoss?: number | null;
   targetPrice?: number | null;
   tp1Price?: number | null;
+  slTrigger?: number | null;
+  minGreenInr?: number | null;
+  minGreenPts?: number | null;
+  beLocked?: boolean | null;
+  peakLtp?: number | null;
+  trailSl?: number | null;
+  timeStopAt?: string | number | null;
   status?: string;
   closeReason?: string;
   createdAt?: string;
@@ -39,6 +46,8 @@ export type StatusResponse = {
   haltInfo?: any;
   tradesToday?: number;
   ordersPlacedToday?: number;
+  dailyPnL?: number;
+  state?: "RUNNING" | "SOFT_STOP" | "HARD_STOP" | string;
   activeTradeId?: string | null;
   activeTrade?: any;
   ticker?: {

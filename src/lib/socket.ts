@@ -34,8 +34,8 @@ function mergeTrades(existing: TradeRow[], incoming: TradeRow[], limit: number) 
   const merged = Array.from(map.values());
   merged.sort(
     (a, b) =>
-      new Date(b.createdAt || b.updatedAt || 0).getTime() -
-      new Date(a.createdAt || a.updatedAt || 0).getTime(),
+      new Date(b.updatedAt || b.createdAt || 0).getTime() -
+      new Date(a.updatedAt || a.createdAt || 0).getTime(),
   );
   return merged.slice(0, limit);
 }

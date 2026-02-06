@@ -149,6 +149,58 @@ function fmtPercent(n: number | null | undefined) {
   return `${Number(n).toFixed(1)}%`;
 }
 
+function fmtBool(value: boolean | null | undefined) {
+  if (value === true) return "YES";
+  if (value === false) return "NO";
+  return "-";
+}
+
+function toEpochMs(value: any): number | null {
+  if (value === null || value === undefined || value === "") return null;
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) return null;
+    if (value < 1e12) return value * 1000;
+    return value;
+  }
+  if (typeof value === "string") {
+    const parsed = new Date(value).getTime();
+    if (Number.isFinite(parsed)) return parsed;
+    const num = Number(value);
+    if (Number.isFinite(num)) return num < 1e12 ? num * 1000 : num;
+  }
+  return null;
+}
+
+function pickTimeStopMs(trade: any): number | null {
+  if (!trade) return null;
+  const keys = [
+    "timeStopAt",
+    "timeStopAtMs",
+    "timeStopAtTs",
+    "timeStopAtIso",
+    "timeStopMs",
+  ];
+  for (const key of keys) {
+    const ms = toEpochMs(trade?.[key]);
+    if (Number.isFinite(ms as number)) return ms as number;
+  }
+  return null;
+}
+
+function formatCountdown(targetMs: number | null, nowMs: number) {
+  if (!Number.isFinite(targetMs as number)) return "-";
+  const diff = Number(targetMs) - nowMs;
+  if (!Number.isFinite(diff)) return "-";
+  if (diff <= 0) return "0s";
+  const totalSec = Math.ceil(diff / 1000);
+  const hours = Math.floor(totalSec / 3600);
+  const minutes = Math.floor((totalSec % 3600) / 60);
+  const seconds = totalSec % 60;
+  if (hours > 0) return `${hours}h ${minutes}m`;
+  if (minutes > 0) return `${minutes}m ${seconds}s`;
+  return `${seconds}s`;
+}
+
 function pickTelemetryValue(
   data: Record<string, any> | null | undefined,
   keys: string[],
@@ -637,6 +689,14 @@ export default function App() {
     return Number.isFinite(ms) ? ms : Date.now();
   }, [statusQ.data?.now]);
 
+  const [nowMs, setNowMs] = React.useState(() => Date.now());
+  React.useEffect(() => {
+    const id = window.setInterval(() => setNowMs(Date.now()), 1000);
+    return () => window.clearInterval(id);
+  }, []);
+  const serverOffsetMs = React.useMemo(() => serverNowMs - Date.now(), [serverNowMs]);
+  const currentMs = nowMs + serverOffsetMs;
+
   const [dateRange, setDateRange] = React.useState<DateRangeKey>("ALL");
 
   const rangeConfig = React.useMemo(
@@ -658,6 +718,16 @@ export default function App() {
       return Number.isFinite(ts) && ts >= rangeStartMs;
     });
   }, [rangeStartMs, trades]);
+
+  const activeTrade = statusQ.data?.activeTrade;
+  const timeStopMs = React.useMemo(
+    () => pickTimeStopMs(activeTrade),
+    [activeTrade],
+  );
+  const timeStopCountdown = React.useMemo(
+    () => formatCountdown(timeStopMs, currentMs),
+    [timeStopMs, currentMs],
+  );
 
   const filteredAlertIncidents = React.useMemo(() => {
     if (!rangeStartMs) return alertIncidents;
@@ -1209,6 +1279,15 @@ export default function App() {
   const hasKiteSession = Boolean(statusQ.data?.ticker?.hasSession);
   const killSwitchEnabled = Boolean(statusQ.data?.killSwitch);
   const tradingEnabled = Boolean(statusQ.data?.tradingEnabled);
+  const dailyState = statusQ.data?.state;
+  const dailyStateClass =
+    dailyState === "HARD_STOP"
+      ? "bad"
+      : dailyState === "SOFT_STOP"
+        ? "warn"
+        : dailyState === "RUNNING"
+          ? "good"
+          : "";
 
   const save = () => {
     setSettings({
@@ -1734,6 +1813,29 @@ export default function App() {
             </div>
           </div>
           <div className="metricCard">
+            <div className="metricLabel">Daily P&amp;L</div>
+            <div
+              className={[
+                "metricValue",
+                (statusQ.data?.dailyPnL ?? 0) >= 0 ? "goodText" : "badText",
+              ].join(" ")}
+            >
+              {fmtCurrency(statusQ.data?.dailyPnL)}
+            </div>
+            <div className="metricMeta">
+              State: {dailyState || "-"}
+            </div>
+          </div>
+          <div className="metricCard">
+            <div className="metricLabel">Run State</div>
+            <div className="metricValue">
+              <span className={["pill", dailyStateClass].join(" ")}>
+                {dailyState || "-"}
+              </span>
+            </div>
+            <div className="metricMeta">Daily stop status</div>
+          </div>
+          <div className="metricCard">
             <div className="metricLabel">Feed Health</div>
             <div className="metricValue">
               {staleItems.length ? "Degraded" : "Healthy"}
@@ -1763,34 +1865,74 @@ export default function App() {
               </div>
             </div>
             <div className="panelBody">
-              {statusQ.data?.activeTrade ? (
+              {activeTrade ? (
                 <div className="stackList">
                   <div>
                     <span className="stackLabel">Instrument</span>
                     <div className="stackValue">
                       {formatPrettyInstrumentFromTradingSymbol(
-                        statusQ.data?.activeTrade?.instrument?.tradingsymbol,
+                        activeTrade?.instrument?.tradingsymbol,
                       ) || "-"}
                     </div>
                   </div>
                   <div>
                     <span className="stackLabel">Side</span>
                     <div className="stackValue">
-                      {statusQ.data?.activeTrade?.side || "-"}
+                      {activeTrade?.side || "-"}
                     </div>
                   </div>
                   <div>
                     <span className="stackLabel">Entry</span>
                     <div className="stackValue">
-                      {fmtNumber(statusQ.data?.activeTrade?.entryPrice)}
+                      {fmtNumber(activeTrade?.entryPrice)}
                     </div>
                   </div>
                   <div>
                     <span className="stackLabel">Stop / Target</span>
                     <div className="stackValue">
-                      {fmtNumber(statusQ.data?.activeTrade?.stopLoss)} /{" "}
-                      {fmtNumber(statusQ.data?.activeTrade?.targetPrice)}
+                      {fmtNumber(activeTrade?.stopLoss)} /{" "}
+                      {fmtNumber(activeTrade?.targetPrice)}
                     </div>
+                  </div>
+                  <div>
+                    <span className="stackLabel">SL trigger</span>
+                    <div className="stackValue">
+                      {fmtNumber(activeTrade?.slTrigger)}
+                    </div>
+                  </div>
+                  <div>
+                    <span className="stackLabel">Min green (INR)</span>
+                    <div className="stackValue">
+                      {fmtCurrency(activeTrade?.minGreenInr)}
+                    </div>
+                  </div>
+                  <div>
+                    <span className="stackLabel">Min green (pts)</span>
+                    <div className="stackValue">
+                      {fmtNumber(activeTrade?.minGreenPts)}
+                    </div>
+                  </div>
+                  <div>
+                    <span className="stackLabel">BE locked</span>
+                    <div className="stackValue">
+                      {fmtBool(activeTrade?.beLocked)}
+                    </div>
+                  </div>
+                  <div>
+                    <span className="stackLabel">Peak LTP</span>
+                    <div className="stackValue">
+                      {fmtNumber(activeTrade?.peakLtp)}
+                    </div>
+                  </div>
+                  <div>
+                    <span className="stackLabel">Trail SL</span>
+                    <div className="stackValue">
+                      {fmtNumber(activeTrade?.trailSl)}
+                    </div>
+                  </div>
+                  <div>
+                    <span className="stackLabel">Time-stop</span>
+                    <div className="stackValue">{timeStopCountdown}</div>
                   </div>
                 </div>
               ) : (
