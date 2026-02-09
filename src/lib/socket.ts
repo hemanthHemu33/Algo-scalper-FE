@@ -305,8 +305,11 @@ export function useSocketBridge(): SocketState {
       setLastEvent("candles");
     };
 
-    const updateLtp = (payload: LtpPayload | LtpPayload[]) => {
-      const incoming = Array.isArray(payload) ? payload : [payload];
+    const updateLtp = (payload: LtpPayload | LtpPayload[] | { row?: LtpPayload }) => {
+      const incomingRaw = Array.isArray(payload) ? payload : [payload];
+      const incoming = incomingRaw
+        .map((row) => (row as { row?: LtpPayload })?.row ?? row)
+        .filter(Boolean) as LtpPayload[];
       if (!incoming.length) return;
       const queries = queryClient
         .getQueryCache()

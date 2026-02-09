@@ -69,6 +69,9 @@ function pickLiveLtp(value: any): number {
     value?.ltp,
     value?.lastPrice,
     value?.price,
+    value?.row?.ltp,
+    value?.row?.lastPrice,
+    value?.row?.price,
   ];
   for (const c of candidates) {
     const num = Number(c);
