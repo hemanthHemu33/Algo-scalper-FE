@@ -126,7 +126,7 @@ export function ChartPanel({
   }, [isFullscreen]);
 
   const candlesQ = useCandles(token, intervalMin, 320, pollMs);
-  const liveLtpQ = useLiveLtp(token, socketConnected ? false : 1500);
+  const liveLtpQ = useLiveLtp(token, socketConnected ? 1000 : 1500);
   const rows: CandleRow[] = candlesQ.data?.rows || [];
   const rowsToday = React.useMemo(() => {
     if (!rows.length || !Number.isFinite(serverNowMs)) return rows;
