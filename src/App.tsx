@@ -157,6 +157,27 @@ function fmtBool(value: boolean | null | undefined) {
   return "-";
 }
 
+function formatUpdatedAt(updatedAt: number | null | undefined) {
+  if (!updatedAt) return "-";
+  const date = new Date(updatedAt);
+  if (!Number.isFinite(date.getTime())) return "-";
+  return date.toLocaleTimeString();
+}
+
+function formatQueryError(err: unknown) {
+  if (!err) return "-";
+  if (typeof err === "string") return err;
+  if (err instanceof Error) return err.message || "Unknown error";
+  if (typeof err === "object" && "message" in (err as any)) {
+    return String((err as any).message);
+  }
+  try {
+    return JSON.stringify(err);
+  } catch {
+    return "Unknown error";
+  }
+}
+
 function toEpochMs(value: any): number | null {
   if (value === null || value === undefined || value === "") return null;
   if (typeof value === "number") {
@@ -685,23 +706,198 @@ export default function App() {
   const subsQ = useSubscriptions(wsPoll ?? 5000);
   // Fetch a bigger window so token→symbol learning covers more instruments.
   const tradesQ = useTradesRecent(200, wsPoll ?? 2000);
-  useEquity(wsPoll ?? 6000);
-  usePositions(wsPoll ?? 8000);
-  useOrders(wsPoll ?? 8000);
+  const equityQ = useEquity(wsPoll ?? 6000);
+  const positionsQ = usePositions(wsPoll ?? 8000);
+  const ordersQ = useOrders(wsPoll ?? 8000);
   const riskQ = useRiskLimits(wsPoll ?? 10000);
-  useStrategyKpis(wsPoll ?? 12000);
+  const strategyKpisQ = useStrategyKpis(wsPoll ?? 12000);
   const executionQ = useExecutionQuality(wsPoll ?? 12000);
-  useMarketHealth(wsPoll ?? 8000);
+  const marketHealthQ = useMarketHealth(wsPoll ?? 8000);
   const alertChannelsQ = useAlertChannels(wsPoll ?? 20000);
   const alertIncidentsQ = useAlertIncidents(wsPoll ?? 15000);
   const telemetryQ = useTelemetrySnapshot(wsPoll ?? 20000);
   const tradeTelemetryQ = useTradeTelemetrySnapshot(wsPoll ?? 20000);
   const optimizerQ = useOptimizerSnapshot(wsPoll ?? 20000);
-  useRejections(wsPoll ?? 20000);
+  const rejectionsQ = useRejections(wsPoll ?? 20000);
   const costCalibQ = useCostCalibration(wsPoll ?? 30000);
   const calendarQ = useMarketCalendar(wsPoll ?? 30000);
-  useFnoUniverse(wsPoll ?? 60000);
+  const fnoQ = useFnoUniverse(wsPoll ?? 60000);
   const criticalHealthQ = useCriticalHealth(wsPoll ?? 12000);
+
+  const integrationChecks = React.useMemo(
+    () => [
+      {
+        id: "status",
+        label: "Engine status",
+        endpoint: "/admin/status",
+        query: statusQ,
+        count: (data: any) => (data ? 1 : 0),
+      },
+      {
+        id: "subscriptions",
+        label: "Subscriptions",
+        endpoint: "/admin/subscriptions",
+        query: subsQ,
+        count: (data: any) => data?.tokens?.length ?? 0,
+      },
+      {
+        id: "trades",
+        label: "Recent trades",
+        endpoint: "/admin/trades/recent",
+        query: tradesQ,
+        count: (data: any) => data?.rows?.length ?? 0,
+      },
+      {
+        id: "equity",
+        label: "Equity snapshot",
+        endpoint: "/admin/account/equity",
+        query: equityQ,
+        count: (data: any) => (data ? 1 : 0),
+      },
+      {
+        id: "positions",
+        label: "Positions",
+        endpoint: "/admin/positions",
+        query: positionsQ,
+        count: (data: any) => data?.rows?.length ?? 0,
+      },
+      {
+        id: "orders",
+        label: "Orders",
+        endpoint: "/admin/orders",
+        query: ordersQ,
+        count: (data: any) => data?.rows?.length ?? 0,
+      },
+      {
+        id: "risk",
+        label: "Risk limits",
+        endpoint: "/admin/risk/limits",
+        query: riskQ,
+        count: (data: any) => (data ? 1 : 0),
+      },
+      {
+        id: "strategy-kpis",
+        label: "Strategy KPIs",
+        endpoint: "/admin/strategy/kpis",
+        query: strategyKpisQ,
+        count: (data: any) => data?.rows?.length ?? 0,
+      },
+      {
+        id: "execution-quality",
+        label: "Execution quality",
+        endpoint: "/admin/execution/quality",
+        query: executionQ,
+        count: (data: any) => data?.rows?.length ?? 0,
+      },
+      {
+        id: "market-health",
+        label: "Market health",
+        endpoint: "/admin/market/health",
+        query: marketHealthQ,
+        count: (data: any) => data?.tokens?.length ?? 0,
+      },
+      {
+        id: "alert-channels",
+        label: "Alert channels",
+        endpoint: "/admin/alerts/channels",
+        query: alertChannelsQ,
+        count: (data: any) => data?.rows?.length ?? 0,
+      },
+      {
+        id: "alert-incidents",
+        label: "Alert incidents",
+        endpoint: "/admin/alerts/incidents",
+        query: alertIncidentsQ,
+        count: (data: any) => data?.rows?.length ?? 0,
+      },
+      {
+        id: "telemetry",
+        label: "Telemetry snapshot",
+        endpoint: "/admin/telemetry/snapshot",
+        query: telemetryQ,
+        count: (data: any) => Object.keys(data?.data ?? {}).length,
+      },
+      {
+        id: "trade-telemetry",
+        label: "Trade telemetry",
+        endpoint: "/admin/trade-telemetry/snapshot",
+        query: tradeTelemetryQ,
+        count: (data: any) => Object.keys(data?.data ?? {}).length,
+      },
+      {
+        id: "optimizer",
+        label: "Optimizer snapshot",
+        endpoint: "/admin/optimizer/snapshot",
+        query: optimizerQ,
+        count: (data: any) => Object.keys(data?.data ?? {}).length,
+      },
+      {
+        id: "rejections",
+        label: "Rejections",
+        endpoint: "/admin/rejections",
+        query: rejectionsQ,
+        count: (data: any) => Object.keys(data?.data ?? {}).length,
+      },
+      {
+        id: "cost-calibration",
+        label: "Cost calibration",
+        endpoint: "/admin/cost/calibration",
+        query: costCalibQ,
+        count: (data: any) =>
+          Object.keys(data?.calibration ?? {}).length ||
+          (data?.recentRuns?.length ?? 0),
+      },
+      {
+        id: "calendar",
+        label: "Market calendar",
+        endpoint: "/admin/market/calendar",
+        query: calendarQ,
+        count: (data: any) => Object.keys(data?.meta ?? {}).length,
+      },
+      {
+        id: "fno",
+        label: "FNO universe",
+        endpoint: "/admin/fno",
+        query: fnoQ,
+        count: (data: any) => Object.keys(data?.universe ?? {}).length,
+      },
+      {
+        id: "critical-health",
+        label: "Critical health",
+        endpoint: "/admin/health/critical",
+        query: criticalHealthQ,
+        count: (data: any) => data?.checks?.length ?? 0,
+      },
+    ],
+    [
+      statusQ,
+      subsQ,
+      tradesQ,
+      equityQ,
+      positionsQ,
+      ordersQ,
+      riskQ,
+      strategyKpisQ,
+      executionQ,
+      marketHealthQ,
+      alertChannelsQ,
+      alertIncidentsQ,
+      telemetryQ,
+      tradeTelemetryQ,
+      optimizerQ,
+      rejectionsQ,
+      costCalibQ,
+      calendarQ,
+      fnoQ,
+      criticalHealthQ,
+    ],
+  );
+
+  const refetchIntegration = React.useCallback(() => {
+    integrationChecks.forEach((check) => {
+      check.query?.refetch?.();
+    });
+  }, [integrationChecks]);
 
   const tokens: number[] = subsQ.data?.tokens || [];
   const trades = tradesQ.data?.rows || [];
@@ -2625,6 +2821,88 @@ export default function App() {
                 Actions require admin permissions (API key) and will log to
                 audit trails on the backend.
               </div>
+            </div>
+          </div>
+
+          <div className="panel miniPanel wide">
+            <div className="panelHeader">
+              <div className="left">
+                <div style={{ fontWeight: 700 }}>Integration Health</div>
+                <span className="pill">FE → BE checks</span>
+              </div>
+              <button
+                className="btn small"
+                type="button"
+                onClick={refetchIntegration}
+              >
+                Refresh
+              </button>
+            </div>
+            <div className="panelBody">
+              <table className="miniTable integrationTable">
+                <thead>
+                  <tr>
+                    <th>Area</th>
+                    <th>Endpoint</th>
+                    <th>Status</th>
+                    <th>Records</th>
+                    <th>Updated</th>
+                    <th>Error</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {integrationChecks.map((check) => {
+                    const query = check.query;
+                    const count = check.count
+                      ? check.count(query.data)
+                      : query.data
+                        ? 1
+                        : 0;
+                    const hasData =
+                      count === null ? Boolean(query.data) : count > 0;
+                    let statusLabel = "OK";
+                    let tone = "good";
+                    if (query.status === "error") {
+                      statusLabel = "Error";
+                      tone = "bad";
+                    } else if (
+                      query.status === "pending" ||
+                      query.status === "loading"
+                    ) {
+                      statusLabel = "Loading";
+                      tone = "warn";
+                    } else if (!hasData) {
+                      statusLabel = "Empty";
+                      tone = "warn";
+                    } else if (query.isFetching) {
+                      statusLabel = "Refreshing";
+                      tone = "warn";
+                    }
+                    return (
+                      <tr key={check.id}>
+                        <td>{check.label}</td>
+                        <td className="mono">{check.endpoint}</td>
+                        <td>
+                          <span className={["pill", tone].join(" ")}>
+                            {statusLabel}
+                          </span>
+                        </td>
+                        <td className="mono">
+                          {count === null ? "-" : fmtCompact(count)}
+                        </td>
+                        <td className="mono">
+                          {formatUpdatedAt(query.dataUpdatedAt)}
+                        </td>
+                        <td className="integrationError">
+                          {query.status === "error"
+                            ? formatQueryError(query.error)
+                            : "-"}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
           </div>
 
