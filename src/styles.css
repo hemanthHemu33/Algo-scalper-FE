@@ -196,6 +196,16 @@ button {
   font-weight: 600;
 }
 
+.integrationTable td {
+  vertical-align: top;
+}
+
+.integrationError {
+  color: var(--bad);
+  font-size: 11px;
+  word-break: break-word;
+}
+
 .pulseList {
   display: grid;
   gap: 10px;
