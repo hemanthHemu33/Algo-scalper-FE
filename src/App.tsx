@@ -2866,8 +2866,7 @@ export default function App() {
                       statusLabel = "Error";
                       tone = "bad";
                     } else if (
-                      query.status === "pending" ||
-                      query.status === "loading"
+                      query.status === "pending"
                     ) {
                       statusLabel = "Loading";
                       tone = "warn";
