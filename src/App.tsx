@@ -214,6 +214,30 @@ function extractNumericSeries(
   return out;
 }
 
+function humanizePathLabel(path: string) {
+  if (!path) return "Value";
+  return path
+    .replace(/\[(\d+)\]/g, " item $1")
+    .split(".")
+    .filter(Boolean)
+    .map((part) =>
+      part
+        .replace(/([a-z\d])([A-Z])/g, "$1 $2")
+        .replace(/[_-]+/g, " ")
+        .replace(/\s+/g, " ")
+        .trim()
+        .replace(/^\w/, (char) => char.toUpperCase()),
+    )
+    .join(" → ");
+}
+
+function describeDataShape(value: unknown) {
+  if (value === null || value === undefined) return "No data";
+  if (Array.isArray(value)) return `List (${value.length} items)`;
+  if (typeof value === "object") return "Details object";
+  return `Single ${typeof value} value`;
+}
+
 function summarizeArrays(value: unknown) {
   const out: Array<{ key: string; size: number }> = [];
   if (!value || typeof value !== "object") return out;
@@ -3123,7 +3147,7 @@ export default function App() {
                       ) : null}
                       <div className="integrationMetaRow">
                         <span className="pill">Updated: {formatUpdatedAt(integrationDetail.updatedAt)}</span>
-                        <span className="pill">Type: {Array.isArray(integrationDetail.data) ? "array" : typeof integrationDetail.data}</span>
+                        <span className="pill">Data: {describeDataShape(integrationDetail.data)}</span>
                       </div>
 
                       {integrationDetail.data ? (
@@ -3136,7 +3160,7 @@ export default function App() {
                               <div className="integrationChart">
                                 {points.slice(0, 12).map((point) => (
                                   <div key={point.key} className="integrationChartRow">
-                                    <div className="integrationChartLabel mono">{point.key}</div>
+                                    <div className="integrationChartLabel">{humanizePathLabel(point.key)}</div>
                                     <div className="integrationChartBarWrap">
                                       <div
                                         className="integrationChartBar"
@@ -3156,8 +3180,8 @@ export default function App() {
                             return (
                               <div className="integrationArrays">
                                 {arrays.map((row) => (
-                                  <span key={row.key} className="pill mono">
-                                    {row.key}: {row.size}
+                                  <span key={row.key} className="pill">
+                                    {humanizePathLabel(row.key)}: {row.size}
                                   </span>
                                 ))}
                               </div>
