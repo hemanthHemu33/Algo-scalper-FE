@@ -1629,9 +1629,22 @@ export default function App() {
   const [blotterLimit, setBlotterLimit] = React.useState<20 | 50>(() =>
     saved.blotterLimit === 50 ? 50 : 20,
   );
+  const [menuOpen, setMenuOpen] = React.useState(false);
+  const menuRef = React.useRef<HTMLDivElement | null>(null);
   const [blotterOpen, setBlotterOpen] = React.useState(() =>
     saved.blotterOpen === false ? false : true,
   );
+
+  React.useEffect(() => {
+    if (!menuOpen) return;
+    const onDown = (event: MouseEvent) => {
+      if (!menuRef.current) return;
+      if (menuRef.current.contains(event.target as Node)) return;
+      setMenuOpen(false);
+    };
+    window.addEventListener("mousedown", onDown);
+    return () => window.removeEventListener("mousedown", onDown);
+  }, [menuOpen]);
 
   // Persist layout so refresh doesn't wipe your charts.
   React.useEffect(() => {
@@ -2074,87 +2087,113 @@ export default function App() {
               DATA: {socketState.connected ? "WS" : "POLL"}
             </span>
           </div>
-        </div>
 
-        <div className="controls headerActionRow">
-          <button
-            className="btn"
-            type="button"
-            onClick={() => setShowConnectionSettings((v) => !v)}
-            title="Show/hide backend and key settings"
-          >
-            {showConnectionSettings ? "Hide Settings" : "Show Settings"}
-          </button>
-          <button
-            className="btn"
-            onClick={() => setBlotterOpen((v) => !v)}
-            title="Toggle trade blotter sidebar"
-          >
-            {blotterOpen ? "Hide blotter" : "Show blotter"}
-          </button>
-          <button
-            className="btn"
-            onClick={onKiteLogin}
-            disabled={kiteBusy}
-            title="Opens the official Kite Connect login page"
-          >
-            {kiteBusy
-              ? "Kite…"
-              : hasKiteSession
-                ? "Re-login Kite"
-                : "Login Kite"}
-          </button>
-          <button
-            className="btn"
-            type="button"
-            onClick={resetLayout}
-            title="Reset charts + blotter layout to default"
-          >
-            Reset layout
-          </button>
-          <button
-            className={["btn", killSwitchEnabled ? "danger" : "good"].join(" ")}
-            type="button"
-            onClick={toggleKillSwitch}
-            disabled={killBusy || !connected}
-            title="Toggle kill switch on backend"
-          >
-            {killBusy
-              ? "Updating…"
-              : killSwitchEnabled
-                ? "Disable Kill Switch"
-                : "Enable Kill Switch"}
-          </button>
-          <button
-            className={["btn", tradingEnabled ? "good" : "warn"].join(" ")}
-            type="button"
-            onClick={toggleTrading}
-            disabled={tradingBusy || !connected}
-            title="Toggle trading on backend"
-          >
-            {tradingBusy
-              ? "Updating…"
-              : tradingEnabled
-                ? "Disable Trading"
-                : "Enable Trading"}
-          </button>
-          <button
-            className="btn danger"
-            onClick={handleDbPurge}
-            title="Delete Mongo data via /admin/db/purge"
-          >
-            Purge DB
-          </button>
-          {kiteRequestToken ? (
+          <div className="headerMenuWrap" ref={menuRef}>
             <button
-              className="btn"
-              onClick={copyRequestToken}
-              disabled={kiteBusy}
-              title="Copy request_token (only if redirect_url points to FE)"
+              className="btn menuToggle"
+              type="button"
+              onClick={() => setMenuOpen((v) => !v)}
+              title="Open dashboard actions"
             >
-              Copy request_token
+              ☰ Actions
             </button>
-          ) : null}
+            {menuOpen ? (
+              <div className="controls headerActionRow">
+                <button
+                  className="btn"
+                  type="button"
+                  onClick={() => {
+                    setShowConnectionSettings((v) => !v);
+                    setMenuOpen(false);
+                  }}
+                  title="Show/hide backend and key settings"
+                >
+                  ⚙️ {showConnectionSettings ? "Hide Settings" : "Show Settings"}
+                </button>
+                <button
+                  className="btn"
+                  onClick={() => {
+                    setBlotterOpen((v) => !v);
+                    setMenuOpen(false);
+                  }}
+                  title="Toggle trade blotter sidebar"
+                >
+                  📒 {blotterOpen ? "Hide blotter" : "Show blotter"}
+                </button>
+                <button
+                  className="btn"
+                  onClick={onKiteLogin}
+                  disabled={kiteBusy}
+                  title="Opens the official Kite Connect login page"
+                >
+                  🔐 {kiteBusy
+                    ? "Kite…"
+                    : hasKiteSession
+                      ? "Re-login Kite"
+                      : "Login Kite"}
+                </button>
+                <button
+                  className="btn"
+                  type="button"
+                  onClick={resetLayout}
+                  title="Reset charts + blotter layout to default"
+                >
+                  🧩 Reset layout
+                </button>
+                <button
+                  className={[
+                    "btn",
+                    killSwitchEnabled ? "danger" : "good",
+                  ].join(" ")}
+                  type="button"
+                  onClick={toggleKillSwitch}
+                  disabled={killBusy || !connected}
+                  title="Toggle kill switch on backend"
+                >
+                  {killBusy
+                    ? "Updating…"
+                    : killSwitchEnabled
+                      ? "🛑 Disable Kill Switch"
+                      : "✅ Enable Kill Switch"}
+                </button>
+                <button
+                  className={[
+                    "btn",
+                    tradingEnabled ? "good" : "warn",
+                  ].join(" ")}
+                  type="button"
+                  onClick={toggleTrading}
+                  disabled={tradingBusy || !connected}
+                  title="Toggle trading on backend"
+                >
+                  {tradingBusy
+                    ? "Updating…"
+                    : tradingEnabled
+                      ? "📈 Disable Trading"
+                      : "▶️ Enable Trading"}
+                </button>
+                <button
+                  className="btn danger"
+                  onClick={handleDbPurge}
+                  title="Delete Mongo data via /admin/db/purge"
+                >
+                  🗑 Purge DB
+                </button>
+                {kiteRequestToken ? (
+                  <button
+                    className="btn"
+                    onClick={copyRequestToken}
+                    disabled={kiteBusy}
+                    title="Copy request_token (only if redirect_url points to FE)"
+                  >
+                    📋 Copy request_token
+                  </button>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
+        </div>
+        <div className="controls headerInfoRow">
           {kiteErr ? <span className="pill bad">{kiteErr}</span> : null}
           {!kiteErr && kiteMsg ? <span className="pill good">{kiteMsg}</span> : null}
         </div>
@@ -2338,7 +2377,7 @@ export default function App() {
 
         <div className="overviewGrid">
           <div className="metricCard">
-            <div className="metricLabel">Realized P&amp;L</div>
+            <div className="metricLabel">💰 Realized P&amp;L</div>
             <div
               className={[
                 "metricValue",
@@ -2353,7 +2392,7 @@ export default function App() {
             </div>
           </div>
           <div className="metricCard">
-            <div className="metricLabel">Win Rate</div>
+            <div className="metricLabel">🎯 Win Rate</div>
             <div className="metricValue">
               {fmtPercent(filteredTradeStats.winRate)}
             </div>
@@ -2363,7 +2402,7 @@ export default function App() {
             </div>
           </div>
           <div className="metricCard">
-            <div className="metricLabel">Avg Hold Time</div>
+            <div className="metricLabel">⏱ Avg Hold Time</div>
             <div className="metricValue">
               {filteredTradeStats.avgHoldMin
                 ? `${filteredTradeStats.avgHoldMin.toFixed(1)}m`
@@ -2372,7 +2411,7 @@ export default function App() {
             <div className="metricMeta">Strategy execution speed</div>
           </div>
           <div className="metricCard">
-            <div className="metricLabel">Open Exposure</div>
+            <div className="metricLabel">📊 Open Exposure</div>
             <div className="metricValue">
               {fmtCurrency(filteredTradeStats.exposure)}
             </div>
@@ -2381,7 +2420,7 @@ export default function App() {
             </div>
           </div>
           <div className="metricCard">
-            <div className="metricLabel">Trades Today</div>
+            <div className="metricLabel">🔁 Trades Today</div>
             <div className="metricValue">
               {fmtCompact(
                 statusQ.data?.tradesToday ?? filteredTradeStats.total,
@@ -2392,7 +2431,7 @@ export default function App() {
             </div>
           </div>
           <div className="metricCard">
-            <div className="metricLabel">Daily P&amp;L</div>
+            <div className="metricLabel">📅 Daily P&amp;L</div>
             <div
               className={[
                 "metricValue",
@@ -2406,7 +2445,7 @@ export default function App() {
             </div>
           </div>
           <div className="metricCard">
-            <div className="metricLabel">Run State</div>
+            <div className="metricLabel">🚦 Run State</div>
             <div className="metricValue">
               <span className={["pill", dailyStateClass].join(" ")}>
                 {dailyState || "-"}
@@ -2415,7 +2454,7 @@ export default function App() {
             <div className="metricMeta">Daily stop status</div>
           </div>
           <div className="metricCard">
-            <div className="metricLabel">Feed Health</div>
+            <div className="metricLabel">📡 Feed Health</div>
             <div className="metricValue">
               {staleItems.length ? "Degraded" : "Healthy"}
             </div>
@@ -2437,7 +2476,7 @@ export default function App() {
           <div className="panel miniPanel">
             <div className="panelHeader">
               <div className="left">
-                <div style={{ fontWeight: 700 }}>Active Trade</div>
+                <div style={{ fontWeight: 700 }}>🧾 Active Trade</div>
                 <span className="pill">
                   {statusQ.data?.activeTradeId ? "LIVE" : "NONE"}
                 </span>
@@ -2680,7 +2719,7 @@ export default function App() {
           <div className="panel miniPanel">
             <div className="panelHeader">
               <div className="left">
-                <div style={{ fontWeight: 700 }}>Execution Quality</div>
+                <div style={{ fontWeight: 700 }}>⚡ Execution Quality</div>
                 <span className="pill">Recent</span>
               </div>
             </div>
@@ -2809,7 +2848,7 @@ export default function App() {
           <div className="panel miniPanel">
             <div className="panelHeader">
               <div className="left">
-                <div style={{ fontWeight: 700 }}>Strategy Performance</div>
+                <div style={{ fontWeight: 700 }}>🧠 Strategy Performance</div>
                 <span className="pill">Top 6</span>
               </div>
             </div>
@@ -2851,7 +2890,7 @@ export default function App() {
           <div className="panel miniPanel">
             <div className="panelHeader">
               <div className="left">
-                <div style={{ fontWeight: 700 }}>Market Pulse</div>
+                <div style={{ fontWeight: 700 }}>🌐 Market Pulse</div>
                 <span className="pill">Top symbols</span>
               </div>
             </div>
@@ -2884,7 +2923,7 @@ export default function App() {
           <div className="panel miniPanel wide">
             <div className="panelHeader">
               <div className="left">
-                <div style={{ fontWeight: 700 }}>Admin Actions</div>
+                <div style={{ fontWeight: 700 }}>🧰 Admin Actions</div>
                 <span
                   className={[
                     "pill",
@@ -3269,7 +3308,7 @@ export default function App() {
         <div className="truthDashboard">
           <div className="truthHeader">
             <div>
-              <div className="overviewTitle">Truth Dashboard</div>
+              <div className="overviewTitle">🔎 Truth Dashboard</div>
               <div className="overviewSubtitle">
                 Per-trade diagnostics to explain edge vs cost vs execution.
               </div>
