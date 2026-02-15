@@ -755,6 +755,8 @@ export default function App() {
   const [draftKiteApiKey, setDraftKiteApiKey] = React.useState(
     settings.kiteApiKey,
   );
+  const [showConnectionSettings, setShowConnectionSettings] = React.useState(false);
+  const [showSecretKeys, setShowSecretKeys] = React.useState(false);
 
   const [toasts, setToasts] = React.useState<Toast[]>([]);
 
@@ -2024,49 +2026,84 @@ export default function App() {
   return (
     <div className="app">
       <div className="topbar">
-        <div className="brand">
-          <span
-            className={[
-              "statusDot",
-              connected ? (halted ? "bad" : "good") : "",
-            ].join(" ")}
-          />
-          <span>Kite Scalper Dashboard</span>
-          <span className="pill">2×2 charts</span>
-          <span className="pill">signals → markers (trades)</span>
+        <div className="topbarMain">
+          <div className="brand">
+            <span
+              className={[
+                "statusDot",
+                connected ? (halted ? "bad" : "good") : "",
+              ].join(" ")}
+            />
+            <div className="brandText">
+              <div className="brandTitle">Kite Scalper Dashboard</div>
+              <div className="brandSubtitle">
+                2×2 charts • signals → markers (trades)
+              </div>
+            </div>
+          </div>
+
+          <div className="controls headerStatusRow">
+            <span className="pill">
+              {connected
+                ? halted
+                  ? "HALTED / KILL"
+                  : "CONNECTED"
+                : "DISCONNECTED"}
+            </span>
+            <span className={["pill", hasKiteSession ? "good" : "bad"].join(" ")}>
+              {hasKiteSession ? "KITE: LOGGED IN" : "KITE: LOGIN REQUIRED"}
+            </span>
+            <span
+              className={["pill", socketState.connected ? "good" : "warn"].join(
+                " ",
+              )}
+              title={
+                socketState.lastEvent
+                  ? `Last socket event: ${socketState.lastEvent}`
+                  : "Socket events pending"
+              }
+            >
+              {socketState.connected ? "WS: CONNECTED" : "WS: OFFLINE"}
+            </span>
+            <span
+              className={["pill", socketState.connected ? "good" : "warn"].join(
+                " ",
+              )}
+              title="Data source mode"
+            >
+              DATA: {socketState.connected ? "WS" : "POLL"}
+            </span>
+          </div>
         </div>
 
-        <div className="controls">
-          <div className="field">
-            <label>Backend URL</label>
-            <input
-              value={draftBase}
-              onChange={(e) => setDraftBase(e.target.value)}
-              placeholder="http://localhost:4001"
-            />
-          </div>
-          <div className="field">
-            <label>API key</label>
-            <input
-              value={draftKey}
-              onChange={(e) => setDraftKey(e.target.value)}
-              placeholder="x-api-key (optional)"
-            />
-          </div>
-          <div className="field">
-            <label>Kite API key</label>
-            <input
-              className="small"
-              value={draftKiteApiKey}
-              onChange={(e) => setDraftKiteApiKey(e.target.value)}
-              placeholder="kite api_key"
-            />
-          </div>
-
-          <button className="btn" onClick={save}>
-            Save
+        <div className="controls headerActionRow">
+          <button
+            className="btn"
+            type="button"
+            onClick={() => setShowConnectionSettings((v) => !v)}
+            title="Show/hide backend and key settings"
+          >
+            {showConnectionSettings ? "Hide Settings" : "Show Settings"}
           </button>
-
+          <button
+            className="btn"
+            onClick={() => setBlotterOpen((v) => !v)}
+            title="Toggle trade blotter sidebar"
+          >
+            {blotterOpen ? "Hide blotter" : "Show blotter"}
+          </button>
+          <button
+            className="btn"
+            onClick={onKiteLogin}
+            disabled={kiteBusy}
+            title="Opens the official Kite Connect login page"
+          >
+            {kiteBusy
+              ? "Kite…"
+              : hasKiteSession
+                ? "Re-login Kite"
+                : "Login Kite"}
+          </button>
           <button
             className="btn"
             type="button"
@@ -2075,7 +2112,6 @@ export default function App() {
           >
             Reset layout
           </button>
-
           <button
             className={["btn", killSwitchEnabled ? "danger" : "good"].join(" ")}
             type="button"
@@ -2089,7 +2125,6 @@ export default function App() {
                 ? "Disable Kill Switch"
                 : "Enable Kill Switch"}
           </button>
-
           <button
             className={["btn", tradingEnabled ? "good" : "warn"].join(" ")}
             type="button"
@@ -2103,62 +2138,6 @@ export default function App() {
                 ? "Disable Trading"
                 : "Enable Trading"}
           </button>
-
-          <span className="pill">
-            {connected
-              ? halted
-                ? "HALTED / KILL"
-                : "CONNECTED"
-              : "DISCONNECTED"}
-          </span>
-
-          <span className={["pill", hasKiteSession ? "good" : "bad"].join(" ")}>
-            {hasKiteSession ? "KITE: LOGGED IN" : "KITE: LOGIN REQUIRED"}
-          </span>
-
-          <span
-            className={["pill", socketState.connected ? "good" : "warn"].join(
-              " ",
-            )}
-            title={
-              socketState.lastEvent
-                ? `Last socket event: ${socketState.lastEvent}`
-                : "Socket events pending"
-            }
-          >
-            {socketState.connected ? "WS: CONNECTED" : "WS: OFFLINE"}
-          </span>
-
-          <span
-            className={["pill", socketState.connected ? "good" : "warn"].join(
-              " ",
-            )}
-            title="Data source mode"
-          >
-            DATA: {socketState.connected ? "WS" : "POLL"}
-          </span>
-
-          <button
-            className="btn"
-            onClick={() => setBlotterOpen((v) => !v)}
-            title="Toggle trade blotter sidebar"
-          >
-            {blotterOpen ? "Hide blotter" : "Show blotter"}
-          </button>
-
-          <button
-            className="btn"
-            onClick={onKiteLogin}
-            disabled={kiteBusy}
-            title="Opens the official Kite Connect login page"
-          >
-            {kiteBusy
-              ? "Kite…"
-              : hasKiteSession
-                ? "Re-login Kite"
-                : "Login Kite"}
-          </button>
-
           <button
             className="btn danger"
             onClick={handleDbPurge}
@@ -2166,7 +2145,6 @@ export default function App() {
           >
             Purge DB
           </button>
-
           {kiteRequestToken ? (
             <button
               className="btn"
@@ -2177,12 +2155,52 @@ export default function App() {
               Copy request_token
             </button>
           ) : null}
-
           {kiteErr ? <span className="pill bad">{kiteErr}</span> : null}
-          {!kiteErr && kiteMsg ? (
-            <span className="pill good">{kiteMsg}</span>
-          ) : null}
+          {!kiteErr && kiteMsg ? <span className="pill good">{kiteMsg}</span> : null}
         </div>
+
+        {showConnectionSettings ? (
+          <div className="controls settingsRow">
+            <div className="field">
+              <label>Backend URL</label>
+              <input
+                value={draftBase}
+                onChange={(e) => setDraftBase(e.target.value)}
+                placeholder="http://localhost:4001"
+              />
+            </div>
+            <button
+              className="btn small"
+              type="button"
+              onClick={() => setShowSecretKeys((v) => !v)}
+              title="Toggle API key visibility"
+            >
+              {showSecretKeys ? "🙈 Hide Keys" : "👁 Show Keys"}
+            </button>
+            <div className="field">
+              <label>API key</label>
+              <input
+                type={showSecretKeys ? "text" : "password"}
+                value={draftKey}
+                onChange={(e) => setDraftKey(e.target.value)}
+                placeholder="x-api-key (optional)"
+              />
+            </div>
+            <div className="field">
+              <label>Kite API key</label>
+              <input
+                className="small"
+                type={showSecretKeys ? "text" : "password"}
+                value={draftKiteApiKey}
+                onChange={(e) => setDraftKiteApiKey(e.target.value)}
+                placeholder="kite api_key"
+              />
+            </div>
+            <button className="btn" onClick={save}>
+              Save
+            </button>
+          </div>
+        ) : null}
       </div>
 
       {staleItems.length ? (
@@ -3128,15 +3146,17 @@ export default function App() {
                           className="btn small"
                           type="button"
                           onClick={() => void refreshIntegrationDetail()}
+                          title="Refresh integration response"
                         >
-                          {integrationDetail.loading ? "Loading…" : "Refresh"}
+                          {integrationDetail.loading ? "⟳" : "↻"}
                         </button>
                         <button
                           className="btn small"
                           type="button"
                           onClick={() => setActiveIntegration(null)}
+                          title="Close dialog"
                         >
-                          Close
+                          ✕
                         </button>
                       </div>
                     </div>
