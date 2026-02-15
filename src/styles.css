@@ -200,10 +200,99 @@ button {
   vertical-align: top;
 }
 
+.integrationRow {
+  cursor: pointer;
+}
+
+.integrationRow:hover {
+  background: rgba(106,166,255,0.08);
+}
+
 .integrationError {
   color: var(--bad);
   font-size: 11px;
   word-break: break-word;
+}
+
+.integrationModalBackdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  z-index: 120;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.integrationModal {
+  width: min(1024px, 100%);
+  max-height: 90vh;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  overflow: hidden;
+  background: var(--panel2);
+}
+
+.integrationModalBody {
+  padding: 12px;
+  display: grid;
+  gap: 12px;
+}
+
+.integrationModalError {
+  color: var(--bad);
+}
+
+.integrationMetaRow,
+.integrationArrays {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.integrationChart {
+  display: grid;
+  gap: 8px;
+}
+
+.integrationChartRow {
+  display: grid;
+  grid-template-columns: minmax(180px, 2fr) minmax(120px, 6fr) auto;
+  gap: 10px;
+  align-items: center;
+}
+
+.integrationChartLabel {
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.integrationChartBarWrap {
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.08);
+  overflow: hidden;
+}
+
+.integrationChartBar {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #6aa6ff, #2ee59d);
+}
+
+.integrationJson {
+  margin: 0;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 10px;
+  font-size: 12px;
+  line-height: 1.5;
+  max-height: 45vh;
+  overflow: auto;
+  background: rgba(0,0,0,0.2);
 }
 
 .pulseList {

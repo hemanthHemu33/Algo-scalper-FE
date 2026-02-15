@@ -1,6 +1,8 @@
 import React from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useSettings } from "./lib/settingsContext";
 import {
+  useAuditLogs,
   useAlertChannels,
   useAlertIncidents,
   useCostCalibration,
@@ -22,7 +24,7 @@ import {
   useTradeTelemetrySnapshot,
   useTradesRecent,
 } from "./lib/hooks";
-import { postJson } from "./lib/http";
+import { getJson, postJson } from "./lib/http";
 import { buildKiteLoginUrl, parseKiteRedirect } from "./lib/kiteAuth";
 import {
   ChartPanel,
@@ -55,6 +57,13 @@ type SavedLayout = {
 };
 
 type DateRangeKey = "1D" | "7D" | "30D" | "90D" | "LAST" | "ALL";
+type IntegrationCheck = {
+  id: string;
+  label: string;
+  endpoint: string;
+  query: any;
+  count: (data: any) => number | null;
+};
 
 const DATE_RANGE_OPTIONS: Array<{
   key: DateRangeKey;
@@ -176,6 +185,42 @@ function formatQueryError(err: unknown) {
   } catch {
     return "Unknown error";
   }
+}
+
+function extractNumericSeries(
+  value: unknown,
+  prefix = "",
+  out: Array<{ key: string; value: number }> = [],
+) {
+  if (out.length >= 30) return out;
+  if (typeof value === "number" && Number.isFinite(value)) {
+    out.push({ key: prefix || "value", value });
+    return out;
+  }
+  if (Array.isArray(value)) {
+    for (let i = 0; i < value.length; i += 1) {
+      extractNumericSeries(value[i], `${prefix}[${i}]`, out);
+      if (out.length >= 30) break;
+    }
+    return out;
+  }
+  if (value && typeof value === "object") {
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      const next = prefix ? `${prefix}.${k}` : k;
+      extractNumericSeries(v, next, out);
+      if (out.length >= 30) break;
+    }
+  }
+  return out;
+}
+
+function summarizeArrays(value: unknown) {
+  const out: Array<{ key: string; size: number }> = [];
+  if (!value || typeof value !== "object") return out;
+  for (const [key, v] of Object.entries(value as Record<string, unknown>)) {
+    if (Array.isArray(v)) out.push({ key, size: v.length });
+  }
+  return out.slice(0, 10);
 }
 
 function toEpochMs(value: any): number | null {
@@ -702,6 +747,38 @@ export default function App() {
 
   const socketState = useSocketBridge();
   const wsPoll = socketState.connected ? false : undefined;
+
+  const readinessQ = useQuery({
+    queryKey: ["ready", settings.baseUrl, settings.apiKey],
+    queryFn: () => getJson<Record<string, unknown>>(settings, "/ready"),
+    refetchInterval: wsPoll ?? 10000,
+    retry: false,
+  });
+  const configQ = useQuery({
+    queryKey: ["config", settings.baseUrl, settings.apiKey],
+    queryFn: () => getJson<Record<string, unknown>>(settings, "/admin/config"),
+    refetchInterval: wsPoll ?? 30000,
+    retry: false,
+  });
+  const tradingToggleQ = useQuery({
+    queryKey: ["trading", settings.baseUrl, settings.apiKey],
+    queryFn: () => getJson<Record<string, unknown>>(settings, "/admin/trading"),
+    refetchInterval: wsPoll ?? 12000,
+    retry: false,
+  });
+  const retentionQ = useQuery({
+    queryKey: ["retention", settings.baseUrl, settings.apiKey],
+    queryFn: () => getJson<Record<string, unknown>>(settings, "/admin/db/retention"),
+    refetchInterval: wsPoll ?? 30000,
+    retry: false,
+  });
+  const rbacQ = useQuery({
+    queryKey: ["rbac", settings.baseUrl, settings.apiKey],
+    queryFn: () => getJson<Record<string, unknown>>(settings, "/admin/rbac"),
+    refetchInterval: wsPoll ?? 30000,
+    retry: false,
+  });
+
   const statusQ = useStatus(wsPoll ?? 2000);
   const subsQ = useSubscriptions(wsPoll ?? 5000);
   // Fetch a bigger window so token→symbol learning covers more instruments.
@@ -713,6 +790,7 @@ export default function App() {
   const strategyKpisQ = useStrategyKpis(wsPoll ?? 12000);
   const executionQ = useExecutionQuality(wsPoll ?? 12000);
   const marketHealthQ = useMarketHealth(wsPoll ?? 8000);
+  const auditLogsQ = useAuditLogs(wsPoll ?? 20000);
   const alertChannelsQ = useAlertChannels(wsPoll ?? 20000);
   const alertIncidentsQ = useAlertIncidents(wsPoll ?? 15000);
   const telemetryQ = useTelemetrySnapshot(wsPoll ?? 20000);
@@ -724,13 +802,34 @@ export default function App() {
   const fnoQ = useFnoUniverse(wsPoll ?? 60000);
   const criticalHealthQ = useCriticalHealth(wsPoll ?? 12000);
 
-  const integrationChecks = React.useMemo(
+  const integrationChecks = React.useMemo<IntegrationCheck[]>(
     () => [
+      {
+        id: "ready",
+        label: "Readiness",
+        endpoint: "/ready",
+        query: readinessQ,
+        count: (data: any) => (data ? 1 : 0),
+      },
       {
         id: "status",
         label: "Engine status",
         endpoint: "/admin/status",
         query: statusQ,
+        count: (data: any) => (data ? 1 : 0),
+      },
+      {
+        id: "config",
+        label: "Config",
+        endpoint: "/admin/config",
+        query: configQ,
+        count: (data: any) => Object.keys(data ?? {}).length,
+      },
+      {
+        id: "trading",
+        label: "Trading toggle",
+        endpoint: "/admin/trading",
+        query: tradingToggleQ,
         count: (data: any) => (data ? 1 : 0),
       },
       {
@@ -797,6 +896,13 @@ export default function App() {
         count: (data: any) => data?.tokens?.length ?? 0,
       },
       {
+        id: "audit-logs",
+        label: "Audit logs",
+        endpoint: "/admin/audit/logs",
+        query: auditLogsQ,
+        count: (data: any) => data?.rows?.length ?? 0,
+      },
+      {
         id: "alert-channels",
         label: "Alert channels",
         endpoint: "/admin/alerts/channels",
@@ -855,6 +961,20 @@ export default function App() {
         count: (data: any) => Object.keys(data?.meta ?? {}).length,
       },
       {
+        id: "retention",
+        label: "DB retention",
+        endpoint: "/admin/db/retention",
+        query: retentionQ,
+        count: (data: any) => Object.keys(data ?? {}).length,
+      },
+      {
+        id: "rbac",
+        label: "RBAC",
+        endpoint: "/admin/rbac",
+        query: rbacQ,
+        count: (data: any) => Object.keys(data ?? {}).length,
+      },
+      {
         id: "fno",
         label: "FNO universe",
         endpoint: "/admin/fno",
@@ -870,7 +990,10 @@ export default function App() {
       },
     ],
     [
+      readinessQ,
       statusQ,
+      configQ,
+      tradingToggleQ,
       subsQ,
       tradesQ,
       equityQ,
@@ -880,6 +1003,7 @@ export default function App() {
       strategyKpisQ,
       executionQ,
       marketHealthQ,
+      auditLogsQ,
       alertChannelsQ,
       alertIncidentsQ,
       telemetryQ,
@@ -888,10 +1012,64 @@ export default function App() {
       rejectionsQ,
       costCalibQ,
       calendarQ,
+      retentionQ,
+      rbacQ,
       fnoQ,
       criticalHealthQ,
     ],
   );
+
+  const [activeIntegration, setActiveIntegration] = React.useState<IntegrationCheck | null>(null);
+  const [integrationDetail, setIntegrationDetail] = React.useState<{
+    loading: boolean;
+    data: unknown;
+    error: string | null;
+    updatedAt: number | null;
+  }>({ loading: false, data: null, error: null, updatedAt: null });
+
+  const refreshIntegrationDetail = React.useCallback(async () => {
+    if (!activeIntegration) return;
+    setIntegrationDetail((prev) => ({ ...prev, loading: true, error: null }));
+    try {
+      const data = await getJson<unknown>(settings, activeIntegration.endpoint);
+      setIntegrationDetail({
+        loading: false,
+        data,
+        error: null,
+        updatedAt: Date.now(),
+      });
+    } catch (err) {
+      setIntegrationDetail({
+        loading: false,
+        data: null,
+        error: formatQueryError(err),
+        updatedAt: Date.now(),
+      });
+    }
+  }, [activeIntegration, settings]);
+
+  React.useEffect(() => {
+    if (!activeIntegration) return;
+    setIntegrationDetail({
+      loading: false,
+      data: activeIntegration.query?.data ?? null,
+      error:
+        activeIntegration.query?.status === "error"
+          ? formatQueryError(activeIntegration.query?.error)
+          : null,
+      updatedAt: activeIntegration.query?.dataUpdatedAt || null,
+    });
+    void refreshIntegrationDetail();
+  }, [activeIntegration, refreshIntegrationDetail]);
+
+  React.useEffect(() => {
+    if (!activeIntegration) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setActiveIntegration(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [activeIntegration]);
 
   const refetchIntegration = React.useCallback(() => {
     integrationChecks.forEach((check) => {
@@ -2878,7 +3056,11 @@ export default function App() {
                       tone = "warn";
                     }
                     return (
-                      <tr key={check.id}>
+                      <tr
+                        key={check.id}
+                        className="integrationRow"
+                        onClick={() => setActiveIntegration(check)}
+                      >
                         <td>{check.label}</td>
                         <td className="mono">{check.endpoint}</td>
                         <td>
@@ -2902,6 +3084,97 @@ export default function App() {
                   })}
                 </tbody>
               </table>
+
+              {activeIntegration ? (
+                <div
+                  className="integrationModalBackdrop"
+                  onClick={() => setActiveIntegration(null)}
+                >
+                  <div
+                    className="integrationModal"
+                    onClick={(event) => event.stopPropagation()}
+                  >
+                    <div className="panelHeader">
+                      <div className="left">
+                        <div style={{ fontWeight: 700 }}>{activeIntegration.label}</div>
+                        <span className="pill mono">{activeIntegration.endpoint}</span>
+                      </div>
+                      <div className="actionsRow">
+                        <button
+                          className="btn small"
+                          type="button"
+                          onClick={() => void refreshIntegrationDetail()}
+                        >
+                          {integrationDetail.loading ? "Loading…" : "Refresh"}
+                        </button>
+                        <button
+                          className="btn small"
+                          type="button"
+                          onClick={() => setActiveIntegration(null)}
+                        >
+                          Close
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="integrationModalBody">
+                      {integrationDetail.error ? (
+                        <div className="integrationModalError">{integrationDetail.error}</div>
+                      ) : null}
+                      <div className="integrationMetaRow">
+                        <span className="pill">Updated: {formatUpdatedAt(integrationDetail.updatedAt)}</span>
+                        <span className="pill">Type: {Array.isArray(integrationDetail.data) ? "array" : typeof integrationDetail.data}</span>
+                      </div>
+
+                      {integrationDetail.data ? (
+                        <>
+                          {(() => {
+                            const points = extractNumericSeries(integrationDetail.data);
+                            if (!points.length) return null;
+                            const max = Math.max(...points.map((p) => Math.abs(p.value)), 1);
+                            return (
+                              <div className="integrationChart">
+                                {points.slice(0, 12).map((point) => (
+                                  <div key={point.key} className="integrationChartRow">
+                                    <div className="integrationChartLabel mono">{point.key}</div>
+                                    <div className="integrationChartBarWrap">
+                                      <div
+                                        className="integrationChartBar"
+                                        style={{ width: `${(Math.abs(point.value) / max) * 100}%` }}
+                                      />
+                                    </div>
+                                    <div className="mono">{fmtCompact(point.value)}</div>
+                                  </div>
+                                ))}
+                              </div>
+                            );
+                          })()}
+
+                          {(() => {
+                            const arrays = summarizeArrays(integrationDetail.data);
+                            if (!arrays.length) return null;
+                            return (
+                              <div className="integrationArrays">
+                                {arrays.map((row) => (
+                                  <span key={row.key} className="pill mono">
+                                    {row.key}: {row.size}
+                                  </span>
+                                ))}
+                              </div>
+                            );
+                          })()}
+
+                          <pre className="integrationJson">
+                            {JSON.stringify(integrationDetail.data, null, 2)}
+                          </pre>
+                        </>
+                      ) : (
+                        <div className="muted">No response body yet.</div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ) : null}
             </div>
           </div>
 
