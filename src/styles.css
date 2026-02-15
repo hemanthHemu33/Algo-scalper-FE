@@ -583,14 +583,15 @@ button {
 
 .headerActionRow {
   padding: 10px;
-  border: 1px solid var(--border);
+  border: 1px solid rgba(106, 166, 255, 0.35);
   border-radius: 14px;
-  background: rgba(0,0,0,0.15);
+  background: linear-gradient(165deg, rgba(20, 32, 64, 0.97), rgba(12, 20, 42, 0.96));
 }
 
 .headerMenuWrap {
   margin-left: auto;
   position: relative;
+  z-index: 120;
 }
 
 .menuToggle {
@@ -605,13 +606,17 @@ button {
   position: absolute;
   top: calc(100% + 8px);
   right: 0;
-  z-index: 80;
-  width: min(340px, 92vw);
+  z-index: 160;
+  width: min(360px, 94vw);
+  max-height: min(70vh, 520px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
   display: grid;
   grid-template-columns: 1fr;
   align-items: stretch;
   gap: 8px;
-  box-shadow: 0 16px 36px rgba(0,0,0,0.35);
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(12px);
 }
 
 .headerActionRow .btn {
