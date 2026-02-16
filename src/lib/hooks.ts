@@ -23,6 +23,7 @@ import type {
   FnoUniverseResponse,
   CriticalHealthResponse,
   LiveLtpResponse,
+  EodAggregateResponse,
 } from '../types/backend';
 
 export function useStatus(pollMs: number | false = 2000) {
@@ -265,6 +266,16 @@ export function useCriticalHealth(pollMs: number | false = 12000) {
   return useQuery({
     queryKey: ['criticalHealth', settings.baseUrl, settings.apiKey],
     queryFn: () => getJson<CriticalHealthResponse>(settings, '/admin/health/critical'),
+    refetchInterval: pollMs,
+    retry: false,
+  });
+}
+
+export function useEodAggregateReport(pollMs: number | false = 60000) {
+  const { settings } = useSettings();
+  return useQuery({
+    queryKey: ['eodAggregateReport', settings.baseUrl, settings.apiKey],
+    queryFn: () => getJson<EodAggregateResponse>(settings, '/admin/reports/eod'),
     refetchInterval: pollMs,
     retry: false,
   });

@@ -34,8 +34,39 @@ export type TradeRow = {
   timeStopAt?: string | number | null;
   status?: string;
   closeReason?: string;
+  decisionAt?: string;
+  entryAt?: string;
+  exitAt?: string;
+  entrySlippage?: number | null;
+  exitSlippage?: number | null;
+  brokerage?: number | null;
+  taxes?: number | null;
+  feesTotal?: number | null;
+  spread?: number | null;
+  spreadAtEntry?: number | null;
+  ivPercentile?: number | null;
+  atr?: number | null;
+  regimeTag?: string | null;
+  trendState?: string | null;
   createdAt?: string;
   updatedAt?: string;
+};
+
+export type EodAggregateResponse = {
+  ok: boolean;
+  asOf?: string;
+  summary?: Record<string, any>;
+  winLossClusters?: Array<{
+    label?: string;
+    count?: number;
+    expectancy?: number;
+    pnl?: number;
+  }>;
+  anomalyTags?: Array<{
+    tag?: string;
+    count?: number;
+    severity?: string;
+  }>;
 };
 
 export type StatusResponse = {
