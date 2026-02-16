@@ -104,6 +104,7 @@ function normalizeBaseUrl(u: string) {
 
 const KITE_SESSION_PATH =
   import.meta.env.VITE_KITE_SESSION_PATH || "/admin/kite/session";
+const NO_DATA = "—";
 
 function buildTokenLabelsFromTrades(trades: TradeRow[]) {
   const map: Record<number, string> = {};
@@ -122,7 +123,7 @@ function labelForToken(token: number, tokenLabels: Record<number, string>) {
 }
 
 function fmtLag(sec: number | null) {
-  if (sec === null || !Number.isFinite(sec) || sec < 0) return "-";
+  if (sec === null || !Number.isFinite(sec) || sec < 0) return NO_DATA;
   if (sec < 60) return `${Math.round(sec)}s`;
   const m = Math.floor(sec / 60);
   const s = Math.round(sec % 60);
@@ -134,12 +135,12 @@ function genId() {
 }
 
 function fmtNumber(n: number | null | undefined, digits = 2) {
-  if (!Number.isFinite(n as number)) return "-";
+  if (!Number.isFinite(n as number)) return NO_DATA;
   return Number(n).toFixed(digits);
 }
 
 function fmtCompact(n: number | null | undefined) {
-  if (!Number.isFinite(n as number)) return "-";
+  if (!Number.isFinite(n as number)) return NO_DATA;
   return new Intl.NumberFormat("en-IN", {
     notation: "compact",
     maximumFractionDigits: 2,
@@ -147,7 +148,7 @@ function fmtCompact(n: number | null | undefined) {
 }
 
 function fmtCurrency(n: number | null | undefined) {
-  if (!Number.isFinite(n as number)) return "-";
+  if (!Number.isFinite(n as number)) return NO_DATA;
   return new Intl.NumberFormat("en-IN", {
     style: "currency",
     currency: "INR",
@@ -156,25 +157,25 @@ function fmtCurrency(n: number | null | undefined) {
 }
 
 function fmtPercent(n: number | null | undefined) {
-  if (!Number.isFinite(n as number)) return "-";
+  if (!Number.isFinite(n as number)) return NO_DATA;
   return `${Number(n).toFixed(1)}%`;
 }
 
 function fmtBool(value: boolean | null | undefined) {
   if (value === true) return "YES";
   if (value === false) return "NO";
-  return "-";
+  return NO_DATA;
 }
 
 function formatUpdatedAt(updatedAt: number | null | undefined) {
-  if (!updatedAt) return "-";
+  if (!updatedAt) return NO_DATA;
   const date = new Date(updatedAt);
-  if (!Number.isFinite(date.getTime())) return "-";
+  if (!Number.isFinite(date.getTime())) return NO_DATA;
   return date.toLocaleTimeString();
 }
 
 function formatQueryError(err: unknown) {
-  if (!err) return "-";
+  if (!err) return NO_DATA;
   if (typeof err === "string") return err;
   if (err instanceof Error) return err.message || "Unknown error";
   if (typeof err === "object" && "message" in (err as any)) {
@@ -280,9 +281,9 @@ function pickTimeStopMs(trade: any): number | null {
 }
 
 function formatCountdown(targetMs: number | null, nowMs: number) {
-  if (!Number.isFinite(targetMs as number)) return "-";
+  if (!Number.isFinite(targetMs as number)) return NO_DATA;
   const diff = Number(targetMs) - nowMs;
-  if (!Number.isFinite(diff)) return "-";
+  if (!Number.isFinite(diff)) return NO_DATA;
   if (diff <= 0) return "0s";
   const totalSec = Math.ceil(diff / 1000);
   const hours = Math.floor(totalSec / 3600);
@@ -306,7 +307,7 @@ function pickTelemetryValue(
 }
 
 function fmtTelemetryValue(value: any) {
-  if (value === null || value === undefined || value === "") return "-";
+  if (value === null || value === undefined || value === "") return NO_DATA;
   if (typeof value === "string") return value;
   if (typeof value === "number" || typeof value === "boolean") return String(value);
   try {
@@ -318,9 +319,9 @@ function fmtTelemetryValue(value: any) {
 }
 
 function formatSince(ts?: string | null) {
-  if (!ts) return "-";
+  if (!ts) return NO_DATA;
   const ms = new Date(ts).getTime();
-  if (!Number.isFinite(ms)) return "-";
+  if (!Number.isFinite(ms)) return NO_DATA;
   const diff = Math.max(0, Date.now() - ms);
   const min = Math.floor(diff / 60000);
   if (min < 60) return `${min}m`;
@@ -330,7 +331,7 @@ function formatSince(ts?: string | null) {
 }
 
 function formatAgoMs(ms: number | null | undefined, nowMs: number) {
-  if (!Number.isFinite(ms as number)) return "-";
+  if (!Number.isFinite(ms as number)) return NO_DATA;
   const diff = Math.max(0, nowMs - Number(ms));
   const sec = Math.floor(diff / 1000);
   if (sec < 60) return `${sec}s`;
@@ -345,7 +346,7 @@ function formatAgoMs(ms: number | null | undefined, nowMs: number) {
 }
 
 function formatIstDate(ms: number | null | undefined) {
-  if (!Number.isFinite(ms as number)) return "-";
+  if (!Number.isFinite(ms as number)) return NO_DATA;
   return new Intl.DateTimeFormat("en-IN", {
     timeZone: IST_TZ,
     day: "2-digit",
@@ -355,7 +356,7 @@ function formatIstDate(ms: number | null | undefined) {
 }
 
 function formatIstDateTime(ms: number | null | undefined, withSeconds = false) {
-  if (!Number.isFinite(ms as number)) return "-";
+  if (!Number.isFinite(ms as number)) return NO_DATA;
   return new Intl.DateTimeFormat("en-IN", {
     timeZone: IST_TZ,
     day: "2-digit",
@@ -1581,6 +1582,79 @@ export default function App() {
     ];
   }, [truthByStrategyRegime, truthCostInsight.verdict]);
 
+  const marketCloseReport = React.useMemo(() => {
+    const rows = filteredTrades || [];
+    const realized = rows
+      .map((row) => tradePnl(row))
+      .filter((v) => Number.isFinite(v as number)) as number[];
+
+    const totalPnl = realized.reduce((sum, v) => sum + v, 0);
+    const wins = realized.filter((v) => v >= 0).length;
+    const losses = realized.filter((v) => v < 0).length;
+    const dayStartMs = getIstDayStartMs(Date.now());
+    const todayTrades = rows.filter((row) => {
+      const ts = new Date(row.updatedAt || row.createdAt || 0).getTime();
+      return Number.isFinite(ts) && ts >= dayStartMs;
+    }).length;
+
+    const holdValues = rows
+      .map((row) => tradeHoldMin(row))
+      .filter((v) => Number.isFinite(v as number)) as number[];
+
+    const coverageRows = [
+      {
+        label: "Slippage capture",
+        have: rows.filter((row) =>
+          Number.isFinite(
+            pickTradeNumber(row, ["slippage", "totalSlippage", "entrySlippage"]),
+          ),
+        ).length,
+      },
+      {
+        label: "Spread-at-entry",
+        have: rows.filter((row) =>
+          Number.isFinite(
+            pickTradeNumber(row, ["entrySpread", "spreadAtEntry", "spread"]),
+          ),
+        ).length,
+      },
+      {
+        label: "MAE / MFE",
+        have: rows.filter(
+          (row) =>
+            Number.isFinite(pickTradeNumber(row, ["mae", "MAE"])) &&
+            Number.isFinite(pickTradeNumber(row, ["mfe", "MFE"])),
+        ).length,
+      },
+      {
+        label: "Lifecycle timestamps",
+        have: rows.filter((row) => Boolean(row.createdAt && row.updatedAt)).length,
+      },
+    ].map((row) => ({
+      ...row,
+      pct: rows.length ? (row.have / rows.length) * 100 : 0,
+    }));
+
+    const beSuggestions = [
+      "Persist `entryAt`, `exitAt`, and `decisionAt` timestamps for latency decomposition (signal -> order -> fill).",
+      "Emit per-trade cost payload: `entrySlippage`, `exitSlippage`, `brokerage`, `taxes`, `feesTotal`.",
+      "Store market context at entry: spread, IV percentile, ATR, regime tag, and trend state.",
+      "Publish an EOD aggregate endpoint (`/admin/reports/eod`) with win/loss clusters and anomaly tags.",
+    ];
+
+    return {
+      totalPnl,
+      wins,
+      losses,
+      todayTrades,
+      avgHold: holdValues.length
+        ? holdValues.reduce((sum, v) => sum + v, 0) / holdValues.length
+        : null,
+      coverageRows,
+      beSuggestions,
+    };
+  }, [filteredTrades]);
+
   const recentActivity = React.useMemo(() => {
     return (filteredTrades || []).slice(0, 6).map((t) => ({
       id: t.tradeId,
@@ -2406,7 +2480,7 @@ export default function App() {
             <div className="metricValue">
               {filteredTradeStats.avgHoldMin
                 ? `${filteredTradeStats.avgHoldMin.toFixed(1)}m`
-                : "-"}
+                : NO_DATA}
             </div>
             <div className="metricMeta">Strategy execution speed</div>
           </div>
@@ -2441,14 +2515,14 @@ export default function App() {
               {fmtCurrency(statusQ.data?.dailyPnL)}
             </div>
             <div className="metricMeta">
-              State: {dailyState || "-"}
+              State: {dailyState || NO_DATA}
             </div>
           </div>
           <div className="metricCard">
             <div className="metricLabel">🚦 Run State</div>
             <div className="metricValue">
               <span className={["pill", dailyStateClass].join(" ")}>
-                {dailyState || "-"}
+                {dailyState || NO_DATA}
               </span>
             </div>
             <div className="metricMeta">Daily stop status</div>
@@ -2490,13 +2564,13 @@ export default function App() {
                     <div className="stackValue">
                       {formatPrettyInstrumentFromTradingSymbol(
                         activeTrade?.instrument?.tradingsymbol,
-                      ) || "-"}
+                      ) || NO_DATA}
                     </div>
                   </div>
                   <div>
                     <span className="stackLabel">Side</span>
                     <div className="stackValue">
-                      {activeTrade?.side || "-"}
+                      {activeTrade?.side || NO_DATA}
                     </div>
                   </div>
                   <div>
@@ -2617,7 +2691,7 @@ export default function App() {
                   <div>
                     <span className="stackLabel">Active trade</span>
                     <div className="stackValue">
-                      {statusQ.data?.activeTradeId || "-"}
+                      {statusQ.data?.activeTradeId || NO_DATA}
                     </div>
                   </div>
                 </div>
@@ -2743,7 +2817,7 @@ export default function App() {
                     <div className="stackValue">
                       {Number.isFinite(executionQuality.avgLatencyMs)
                         ? `${fmtNumber(executionQuality.avgLatencyMs ?? null, 0)} ms`
-                        : "-"}
+                        : NO_DATA}
                     </div>
                   </div>
                   <div>
@@ -2822,7 +2896,7 @@ export default function App() {
                         <td className="mono">
                           {incident.createdAt
                             ? new Date(incident.createdAt).toLocaleString()
-                            : "-"}
+                            : NO_DATA}
                         </td>
                         <td>
                           <span
@@ -2834,7 +2908,7 @@ export default function App() {
                             {(incident.severity || "unknown").toUpperCase()}
                           </span>
                         </td>
-                        <td>{incident.message || incident.type || "-"}</td>
+                        <td>{incident.message || incident.type || NO_DATA}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -3150,7 +3224,7 @@ export default function App() {
                           </span>
                         </td>
                         <td className="mono">
-                          {count === null ? "-" : fmtCompact(count)}
+                          {count === null ? NO_DATA : fmtCompact(count)}
                         </td>
                         <td className="mono">
                           {formatUpdatedAt(query.dataUpdatedAt)}
@@ -3158,7 +3232,7 @@ export default function App() {
                         <td className="integrationError">
                           {query.status === "error"
                             ? formatQueryError(query.error)
-                            : "-"}
+                            : NO_DATA}
                         </td>
                       </tr>
                     );
@@ -3276,13 +3350,13 @@ export default function App() {
                       <div className="activityMain">
                         <div className="activityTitle">
                           {labelForToken(row.token, tokenLabels)} •{" "}
-                          {row.side || "-"}
+                          {row.side || NO_DATA}
                         </div>
                         <div className="activityMeta">
                           {row.status || "status n/a"} •{" "}
                           {row.updatedAt
                             ? new Date(row.updatedAt).toLocaleString()
-                            : "-"}
+                            : NO_DATA}
                         </div>
                       </div>
                       <div
@@ -3293,7 +3367,7 @@ export default function App() {
                             : "badText",
                         ].join(" ")}
                       >
-                        {row.pnl === null ? "-" : fmtCurrency(row.pnl)}
+                        {row.pnl === null ? NO_DATA : fmtCurrency(row.pnl)}
                       </div>
                     </div>
                   ))}
@@ -3368,7 +3442,7 @@ export default function App() {
                     <div className="stackValue">
                       {truthSummary.avgHoldMin
                         ? `${truthSummary.avgHoldMin.toFixed(1)}m`
-                        : "-"}
+                        : NO_DATA}
                     </div>
                   </div>
                   <div>
@@ -3406,6 +3480,54 @@ export default function App() {
                     </div>
                   </div>
                 </div>
+              </div>
+            </div>
+
+            <div className="panel miniPanel wide">
+              <div className="panelHeader">
+                <div className="left">
+                  <div style={{ fontWeight: 700 }}>Post-market report</div>
+                  <span className="pill">EOD insights</span>
+                </div>
+              </div>
+              <div className="panelBody">
+                <div className="truthSubGrid">
+                  <div>
+                    <div className="truthSubTitle">Session snapshot</div>
+                    <div className="truthReport">
+                      <div className="truthReportLine">
+                        Realized P&amp;L: {fmtCurrency(marketCloseReport.totalPnl)}
+                      </div>
+                      <div className="truthReportLine">
+                        Closed trades today: {fmtCompact(marketCloseReport.todayTrades)}
+                      </div>
+                      <div className="truthReportLine">
+                        Win/Loss: {marketCloseReport.wins} / {marketCloseReport.losses}
+                      </div>
+                      <div className="truthReportLine">
+                        Avg hold: {marketCloseReport.avgHold ? `${marketCloseReport.avgHold.toFixed(1)}m` : NO_DATA}
+                      </div>
+                    </div>
+                  </div>
+                  <div>
+                    <div className="truthSubTitle">Backend data coverage</div>
+                    <div className="truthReport">
+                      {marketCloseReport.coverageRows.map((row) => (
+                        <div key={row.label} className="truthReportLine">
+                          {row.label}: {fmtNumber(row.pct, 0)}% ({row.have}/{filteredTrades.length || 0})
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+                <div className="truthSubTitle" style={{ marginTop: 12 }}>
+                  BE additions to improve this report
+                </div>
+                <ul className="reportSuggestionList">
+                  {marketCloseReport.beSuggestions.map((line) => (
+                    <li key={line}>{line}</li>
+                  ))}
+                </ul>
               </div>
             </div>
 
@@ -3658,7 +3780,7 @@ export default function App() {
                           <td className="mono">{fmtNumber(row.mae)}</td>
                           <td className="mono">{fmtNumber(row.mfe)}</td>
                           <td className="mono">
-                            {row.holdMin ? `${row.holdMin.toFixed(1)}m` : "-"}
+                            {row.holdMin ? `${row.holdMin.toFixed(1)}m` : NO_DATA}
                           </td>
                         </tr>
                       ))}

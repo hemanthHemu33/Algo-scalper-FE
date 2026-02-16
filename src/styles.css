@@ -433,6 +433,15 @@ button {
   font-size: 12px;
 }
 
+.reportSuggestionList {
+  margin: 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
 .truthTable th,
 .truthTable td {
   white-space: nowrap;
