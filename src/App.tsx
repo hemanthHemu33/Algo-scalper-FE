@@ -1717,9 +1717,31 @@ export default function App() {
     const doc = new jsPDF({ unit: "pt", format: "a4" });
 
     const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
     const left = 40;
     const right = pageWidth - 40;
     const contentWidth = right - left;
+    const bottomMargin = 36;
+
+    const ensureSpace = (yPos: number, heightNeeded: number, nextSectionTitle?: string) => {
+      if (yPos + heightNeeded <= pageHeight - bottomMargin) return yPos;
+      doc.addPage();
+      const nextY = 54;
+      if (nextSectionTitle) {
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(12);
+        doc.setTextColor(18, 33, 67);
+        doc.text(nextSectionTitle, left, nextY);
+        return nextY + 16;
+      }
+      return nextY;
+    };
+
+    const drawSectionCard = (yPos: number, height: number) => {
+      doc.setFillColor(248, 250, 255);
+      doc.setDrawColor(224, 232, 248);
+      doc.roundedRect(left, yPos, contentWidth, height, 10, 10, "FD");
+    };
 
     const card = (x: number, y: number, w: number, h: number, title: string, value: string) => {
       doc.setFillColor(247, 250, 255);
@@ -1745,57 +1767,67 @@ export default function App() {
     doc.setFontSize(10);
     doc.text("Kite Scalper FE dashboard export", left, 56);
 
-    let y = 110;
+    let y = 106;
     const gap = 10;
     const cardWidth = (contentWidth - gap * 3) / 4;
-    card(left, y, cardWidth, 52, "Realized P&L", fmtCurrency(marketCloseReport.totalPnl));
-    card(left + (cardWidth + gap), y, cardWidth, 52, "Closed trades", fmtCompact(marketCloseReport.todayTrades));
-    card(left + 2 * (cardWidth + gap), y, cardWidth, 52, "Win / Loss", `${marketCloseReport.wins} / ${marketCloseReport.losses}`);
-    card(left + 3 * (cardWidth + gap), y, cardWidth, 52, "Avg hold", marketCloseReport.avgHold ? `${marketCloseReport.avgHold.toFixed(1)}m` : NO_DATA);
+    card(left, y, cardWidth, 58, "Realized P&L", fmtCurrency(marketCloseReport.totalPnl));
+    card(left + (cardWidth + gap), y, cardWidth, 58, "Closed trades", fmtCompact(marketCloseReport.todayTrades));
+    card(left + 2 * (cardWidth + gap), y, cardWidth, 58, "Win / Loss", `${marketCloseReport.wins} / ${marketCloseReport.losses}`);
+    card(left + 3 * (cardWidth + gap), y, cardWidth, 58, "Avg hold", marketCloseReport.avgHold ? `${marketCloseReport.avgHold.toFixed(1)}m` : NO_DATA);
 
-    y += 78;
+    y += 84;
+    y = ensureSpace(y, 90);
+    drawSectionCard(y, 90);
     doc.setFont("helvetica", "bold");
     doc.setFontSize(12);
     doc.setTextColor(18, 33, 67);
-    doc.text("Win / Loss distribution", left, y);
+    doc.text("Win / Loss distribution", left + 14, y + 20);
 
-    y += 10;
+    y += 32;
     const wins = marketCloseReport.wins;
     const losses = marketCloseReport.losses;
     const sum = Math.max(1, wins + losses);
-    const winsW = (wins / sum) * contentWidth;
+    const barLeft = left + 14;
+    const barWidth = contentWidth - 28;
+    const winsW = (wins / sum) * barWidth;
     doc.setFillColor(36, 176, 107);
-    doc.roundedRect(left, y, winsW, 16, 4, 4, "F");
+    doc.roundedRect(barLeft, y, winsW, 16, 4, 4, "F");
     doc.setFillColor(226, 78, 80);
-    doc.roundedRect(left + winsW, y, contentWidth - winsW, 16, 4, 4, "F");
+    doc.roundedRect(barLeft + winsW, y, barWidth - winsW, 16, 4, 4, "F");
     doc.setFont("helvetica", "normal");
     doc.setFontSize(9);
     doc.setTextColor(60, 65, 74);
-    doc.text(`Win rate ${fmtPercent((wins / sum) * 100)}`, left, y + 30);
+    doc.text(`Win rate ${fmtPercent((wins / sum) * 100)} (${wins} wins / ${losses} losses)`, left + 14, y + 32);
 
-    y += 48;
+    y += 52;
+    y = ensureSpace(y, 40, "Coverage of requested EOD additions");
     doc.setFont("helvetica", "bold");
     doc.setFontSize(12);
     doc.setTextColor(18, 33, 67);
     doc.text("Coverage of requested EOD additions", left, y);
-    y += 10;
+    y += 12;
 
     marketCloseReport.coverageRows.forEach((row) => {
+      y = ensureSpace(y, 46, "Coverage of requested EOD additions");
       const pct = Number.isFinite(row.pct) ? row.pct : 0;
       doc.setFont("helvetica", "normal");
       doc.setFontSize(9);
       doc.setTextColor(60, 65, 74);
-      doc.text(`${row.label}`, left, y + 12);
+      const wrappedLabel = doc.splitTextToSize(`${row.label}`, contentWidth - 130);
+      doc.text(wrappedLabel, left, y + 12);
       doc.setFillColor(239, 243, 252);
-      doc.roundedRect(left, y + 16, contentWidth, 10, 4, 4, "F");
+      const labelLines = wrappedLabel.length;
+      const barY = y + 8 + labelLines * 10;
+      doc.roundedRect(left, barY, contentWidth, 10, 4, 4, "F");
       doc.setFillColor(58, 117, 244);
-      doc.roundedRect(left, y + 16, (pct / 100) * contentWidth, 10, 4, 4, "F");
+      doc.roundedRect(left, barY, (pct / 100) * contentWidth, 10, 4, 4, "F");
       doc.setTextColor(82, 103, 140);
       doc.text(`${fmtNumber(pct, 0)}% (${row.have}/${total})`, right - 110, y + 12);
-      y += 34;
+      y += 24 + labelLines * 10;
     });
 
-    y += 4;
+    y += 8;
+    y = ensureSpace(y, 80, "EOD aggregate insights (/admin/reports/eod)");
     doc.setFont("helvetica", "bold");
     doc.setFontSize(12);
     doc.setTextColor(18, 33, 67);
@@ -1810,11 +1842,14 @@ export default function App() {
       ? eodAggregates.anomalyTags.map((tag: EodAnomalyTag) => `• ${tag.tag}: ${tag.count} (${String(tag.severity || "NA").toUpperCase()})`)
       : ["• No anomaly tags returned from endpoint yet."];
     [...clusters, ...anomalies].forEach((line) => {
-      doc.text(line, left, y);
-      y += 14;
+      y = ensureSpace(y, 24, "EOD aggregate insights (/admin/reports/eod)");
+      const wrapped = doc.splitTextToSize(line, contentWidth);
+      doc.text(wrapped, left, y);
+      y += wrapped.length * 12;
     });
 
     y += 8;
+    y = ensureSpace(y, 44, "Truth summary");
     doc.setFont("helvetica", "bold");
     doc.text("Truth summary", left, y);
     y += 14;
