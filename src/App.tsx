@@ -1,4 +1,5 @@
 import React from "react";
+import { jsPDF } from "jspdf";
 import { useQuery } from "@tanstack/react-query";
 import { useSettings } from "./lib/settingsContext";
 import {
@@ -23,6 +24,7 @@ import {
   useTelemetrySnapshot,
   useTradeTelemetrySnapshot,
   useTradesRecent,
+  useEodAggregateReport,
 } from "./lib/hooks";
 import { getJson, postJson } from "./lib/http";
 import { buildKiteLoginUrl, parseKiteRedirect } from "./lib/kiteAuth";
@@ -57,6 +59,18 @@ type SavedLayout = {
 };
 
 type DateRangeKey = "1D" | "7D" | "30D" | "90D" | "LAST" | "ALL";
+type EodCluster = {
+  label: string;
+  count: number;
+  expectancy: number | null;
+};
+
+type EodAnomalyTag = {
+  tag: string;
+  count: number;
+  severity: string | null;
+};
+
 type IntegrationCheck = {
   id: string;
   label: string;
@@ -828,6 +842,7 @@ export default function App() {
   const calendarQ = useMarketCalendar(wsPoll ?? 30000);
   const fnoQ = useFnoUniverse(wsPoll ?? 60000);
   const criticalHealthQ = useCriticalHealth(wsPoll ?? 12000);
+  const eodAggregateQ = useEodAggregateReport(wsPoll ?? 60000);
 
   const integrationChecks = React.useMemo<IntegrationCheck[]>(
     () => [
@@ -1015,6 +1030,14 @@ export default function App() {
         query: criticalHealthQ,
         count: (data: any) => data?.checks?.length ?? 0,
       },
+      {
+        id: "eod-report",
+        label: "EOD aggregate report",
+        endpoint: "/admin/reports/eod",
+        query: eodAggregateQ,
+        count: (data: any) =>
+          (data?.winLossClusters?.length ?? 0) + (data?.anomalyTags?.length ?? 0),
+      },
     ],
     [
       readinessQ,
@@ -1043,6 +1066,7 @@ export default function App() {
       rbacQ,
       fnoQ,
       criticalHealthQ,
+      eodAggregateQ,
     ],
   );
 
@@ -1582,6 +1606,32 @@ export default function App() {
     ];
   }, [truthByStrategyRegime, truthCostInsight.verdict]);
 
+  const eodAggregates = React.useMemo(() => {
+    const source = eodAggregateQ.data || {};
+    const winLossClusters = Array.isArray((source as any).winLossClusters)
+      ? (source as any).winLossClusters
+      : [];
+    const anomalyTags = Array.isArray((source as any).anomalyTags)
+      ? (source as any).anomalyTags
+      : [];
+
+    return {
+      asOf: (source as any).asOf || null,
+      winLossClusters: winLossClusters.slice(0, 5).map((row: any): EodCluster => ({
+        label: row?.label || row?.name || "Cluster",
+        count: Number(row?.count) || 0,
+        expectancy: Number.isFinite(Number(row?.expectancy))
+          ? Number(row?.expectancy)
+          : null,
+      })),
+      anomalyTags: anomalyTags.slice(0, 6).map((row: any): EodAnomalyTag => ({
+        tag: row?.tag || row?.label || "anomaly",
+        count: Number(row?.count) || 0,
+        severity: row?.severity || null,
+      })),
+    };
+  }, [eodAggregateQ.data]);
+
   const marketCloseReport = React.useMemo(() => {
     const rows = filteredTrades || [];
     const realized = rows
@@ -1603,32 +1653,34 @@ export default function App() {
 
     const coverageRows = [
       {
-        label: "Slippage capture",
-        have: rows.filter((row) =>
-          Number.isFinite(
-            pickTradeNumber(row, ["slippage", "totalSlippage", "entrySlippage"]),
-          ),
-        ).length,
+        label: "Latency decomposition timestamps (`decisionAt`, `entryAt`, `exitAt`)",
+        have: rows.filter((row) => Boolean((row as any).decisionAt && (row as any).entryAt && (row as any).exitAt)).length,
       },
       {
-        label: "Spread-at-entry",
-        have: rows.filter((row) =>
-          Number.isFinite(
-            pickTradeNumber(row, ["entrySpread", "spreadAtEntry", "spread"]),
-          ),
-        ).length,
+        label: "Per-trade cost payload (`entrySlippage`, `exitSlippage`, `brokerage`, `taxes`, `feesTotal`)",
+        have: rows.filter((row) => {
+          const entrySlippage = pickTradeNumber(row, ["entrySlippage"]);
+          const exitSlippage = pickTradeNumber(row, ["exitSlippage"]);
+          const brokerage = pickTradeNumber(row, ["brokerage"]);
+          const taxes = pickTradeNumber(row, ["taxes"]);
+          const feesTotal = pickTradeNumber(row, ["feesTotal", "fees_total"]);
+          return [entrySlippage, exitSlippage, brokerage, taxes, feesTotal].every((v) => Number.isFinite(v as number));
+        }).length,
       },
       {
-        label: "MAE / MFE",
-        have: rows.filter(
-          (row) =>
-            Number.isFinite(pickTradeNumber(row, ["mae", "MAE"])) &&
-            Number.isFinite(pickTradeNumber(row, ["mfe", "MFE"])),
-        ).length,
+        label: "Entry market context (`spread`, `ivPercentile`, `ATR`, `regimeTag`, `trendState`)",
+        have: rows.filter((row) => {
+          const spread = pickTradeNumber(row, ["entrySpread", "spreadAtEntry", "spread"]);
+          const ivPct = pickTradeNumber(row, ["ivPercentile", "iv_pct"]);
+          const atr = pickTradeNumber(row, ["atr", "ATR"]);
+          const regimeTag = String((row as any).regimeTag || (row as any).regime || "").trim();
+          const trendState = String((row as any).trendState || (row as any).trend || "").trim();
+          return Number.isFinite(spread as number) && Number.isFinite(ivPct as number) && Number.isFinite(atr as number) && Boolean(regimeTag) && Boolean(trendState);
+        }).length,
       },
       {
-        label: "Lifecycle timestamps",
-        have: rows.filter((row) => Boolean(row.createdAt && row.updatedAt)).length,
+        label: "EOD aggregates endpoint (`/admin/reports/eod`)",
+        have: eodAggregateQ.data?.ok ? rows.length || 1 : 0,
       },
     ].map((row) => ({
       ...row,
@@ -1653,7 +1705,7 @@ export default function App() {
       coverageRows,
       beSuggestions,
     };
-  }, [filteredTrades]);
+  }, [eodAggregateQ.data?.ok, filteredTrades]);
 
   const downloadEodReport = React.useCallback(() => {
     const now = new Date();
@@ -1662,50 +1714,120 @@ export default function App() {
     const dd = String(now.getDate()).padStart(2, "0");
     const stamp = `${yyyy}-${mm}-${dd}`;
     const total = filteredTrades.length || 0;
+    const doc = new jsPDF({ unit: "pt", format: "a4" });
 
-    const lines = [
-      `# End-of-Day Report (${stamp})`,
-      "",
-      "## Session snapshot",
-      `- Realized P&L: ${fmtCurrency(marketCloseReport.totalPnl)}`,
-      `- Closed trades today: ${fmtCompact(marketCloseReport.todayTrades)}`,
-      `- Win/Loss: ${marketCloseReport.wins} / ${marketCloseReport.losses}`,
-      `- Avg hold: ${
-        marketCloseReport.avgHold
-          ? `${marketCloseReport.avgHold.toFixed(1)}m`
-          : NO_DATA
-      }`,
-      "",
-      "## Backend data coverage",
-      ...marketCloseReport.coverageRows.map(
-        (row) =>
-          `- ${row.label}: ${fmtNumber(row.pct, 0)}% (${row.have}/${total})`,
-      ),
-      "",
-      "## BE additions to improve this report",
-      ...marketCloseReport.beSuggestions.map((line) => `- ${line}`),
-      "",
-      "## Truth summary",
-      `- Avg R: ${fmtNumber(truthSummary.avgR, 2)}`,
-      `- Expectancy: ${fmtNumber(truthSummary.expectancy, 2)} R`,
-      `- Loss driver: ${truthCostInsight.verdict}`,
-      "",
-      "Generated by Kite Scalper FE dashboard.",
-    ];
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const left = 40;
+    const right = pageWidth - 40;
+    const contentWidth = right - left;
 
-    const blob = new Blob([lines.join("\n")], {
-      type: "text/markdown;charset=utf-8",
+    const card = (x: number, y: number, w: number, h: number, title: string, value: string) => {
+      doc.setFillColor(247, 250, 255);
+      doc.setDrawColor(216, 227, 255);
+      doc.roundedRect(x, y, w, h, 8, 8, "FD");
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(9);
+      doc.setTextColor(82, 103, 140);
+      doc.text(title, x + 12, y + 18);
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(14);
+      doc.setTextColor(18, 33, 67);
+      doc.text(value, x + 12, y + 38);
+    };
+
+    doc.setFillColor(23, 55, 122);
+    doc.rect(0, 0, pageWidth, 86, "F");
+    doc.setTextColor(255, 255, 255);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(20);
+    doc.text(`End-of-Day Trading Report · ${stamp}`, left, 36);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(10);
+    doc.text("Kite Scalper FE dashboard export", left, 56);
+
+    let y = 110;
+    const gap = 10;
+    const cardWidth = (contentWidth - gap * 3) / 4;
+    card(left, y, cardWidth, 52, "Realized P&L", fmtCurrency(marketCloseReport.totalPnl));
+    card(left + (cardWidth + gap), y, cardWidth, 52, "Closed trades", fmtCompact(marketCloseReport.todayTrades));
+    card(left + 2 * (cardWidth + gap), y, cardWidth, 52, "Win / Loss", `${marketCloseReport.wins} / ${marketCloseReport.losses}`);
+    card(left + 3 * (cardWidth + gap), y, cardWidth, 52, "Avg hold", marketCloseReport.avgHold ? `${marketCloseReport.avgHold.toFixed(1)}m` : NO_DATA);
+
+    y += 78;
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(12);
+    doc.setTextColor(18, 33, 67);
+    doc.text("Win / Loss distribution", left, y);
+
+    y += 10;
+    const wins = marketCloseReport.wins;
+    const losses = marketCloseReport.losses;
+    const sum = Math.max(1, wins + losses);
+    const winsW = (wins / sum) * contentWidth;
+    doc.setFillColor(36, 176, 107);
+    doc.roundedRect(left, y, winsW, 16, 4, 4, "F");
+    doc.setFillColor(226, 78, 80);
+    doc.roundedRect(left + winsW, y, contentWidth - winsW, 16, 4, 4, "F");
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(9);
+    doc.setTextColor(60, 65, 74);
+    doc.text(`Win rate ${fmtPercent((wins / sum) * 100)}`, left, y + 30);
+
+    y += 48;
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(12);
+    doc.setTextColor(18, 33, 67);
+    doc.text("Coverage of requested EOD additions", left, y);
+    y += 10;
+
+    marketCloseReport.coverageRows.forEach((row) => {
+      const pct = Number.isFinite(row.pct) ? row.pct : 0;
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(9);
+      doc.setTextColor(60, 65, 74);
+      doc.text(`${row.label}`, left, y + 12);
+      doc.setFillColor(239, 243, 252);
+      doc.roundedRect(left, y + 16, contentWidth, 10, 4, 4, "F");
+      doc.setFillColor(58, 117, 244);
+      doc.roundedRect(left, y + 16, (pct / 100) * contentWidth, 10, 4, 4, "F");
+      doc.setTextColor(82, 103, 140);
+      doc.text(`${fmtNumber(pct, 0)}% (${row.have}/${total})`, right - 110, y + 12);
+      y += 34;
     });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `eod-report-${stamp}.md`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-    pushToast("good", "Downloaded EOD report");
+
+    y += 4;
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(12);
+    doc.setTextColor(18, 33, 67);
+    doc.text("EOD aggregate insights (/admin/reports/eod)", left, y);
+    y += 14;
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(10);
+    const clusters = eodAggregates.winLossClusters.length
+      ? eodAggregates.winLossClusters.map((cluster: EodCluster) => `• ${cluster.label}: ${cluster.count} trades | expectancy ${fmtNumber(cluster.expectancy, 2)}R`)
+      : ["• No win/loss clusters returned from endpoint yet."];
+    const anomalies = eodAggregates.anomalyTags.length
+      ? eodAggregates.anomalyTags.map((tag: EodAnomalyTag) => `• ${tag.tag}: ${tag.count} (${String(tag.severity || "NA").toUpperCase()})`)
+      : ["• No anomaly tags returned from endpoint yet."];
+    [...clusters, ...anomalies].forEach((line) => {
+      doc.text(line, left, y);
+      y += 14;
+    });
+
+    y += 8;
+    doc.setFont("helvetica", "bold");
+    doc.text("Truth summary", left, y);
+    y += 14;
+    doc.setFont("helvetica", "normal");
+    doc.text(`Avg R: ${fmtNumber(truthSummary.avgR, 2)} | Expectancy: ${fmtNumber(truthSummary.expectancy, 2)} R`, left, y);
+    y += 14;
+    doc.text(`Loss driver: ${truthCostInsight.verdict}`, left, y);
+
+    doc.save(`eod-report-${stamp}.pdf`);
+    pushToast("good", "Downloaded EOD report (PDF)");
   }, [
+    eodAggregates.anomalyTags,
+    eodAggregates.winLossClusters,
     filteredTrades.length,
     marketCloseReport,
     pushToast,
@@ -3549,7 +3671,7 @@ export default function App() {
                   <span className="pill">EOD insights</span>
                 </div>
                 <button className="btn small" onClick={downloadEodReport}>
-                  Download EOD report
+                  Download EOD report (PDF)
                 </button>
               </div>
               <div className="panelBody">
@@ -3582,14 +3704,39 @@ export default function App() {
                     </div>
                   </div>
                 </div>
-                <div className="truthSubTitle" style={{ marginTop: 12 }}>
-                  BE additions to improve this report
+                <div className="truthSubGrid" style={{ marginTop: 12 }}>
+                  <div>
+                    <div className="truthSubTitle">Requested backend additions</div>
+                    <ul className="reportSuggestionList">
+                      {marketCloseReport.beSuggestions.map((line) => (
+                        <li key={line}>{line}</li>
+                      ))}
+                    </ul>
+                  </div>
+                  <div>
+                    <div className="truthSubTitle">EOD aggregates (/admin/reports/eod)</div>
+                    <div className="truthReport">
+                      {eodAggregateQ.isLoading ? (
+                        <div className="panelPlaceholder">Loading aggregate endpoint…</div>
+                      ) : eodAggregates.winLossClusters.length || eodAggregates.anomalyTags.length ? (
+                        <>
+                          {eodAggregates.winLossClusters.map((cluster: EodCluster) => (
+                            <div key={`${cluster.label}-${cluster.count}`} className="truthReportLine">
+                              Cluster {cluster.label}: {cluster.count} trades • Expectancy {fmtNumber(cluster.expectancy, 2)}R
+                            </div>
+                          ))}
+                          {eodAggregates.anomalyTags.map((tag: EodAnomalyTag) => (
+                            <div key={`${tag.tag}-${tag.count}`} className="truthReportLine">
+                              {tag.tag}: {tag.count} ({String(tag.severity || "NA").toUpperCase()})
+                            </div>
+                          ))}
+                        </>
+                      ) : (
+                        <div className="panelPlaceholder">No cluster/anomaly payload received yet.</div>
+                      )}
+                    </div>
+                  </div>
                 </div>
-                <ul className="reportSuggestionList">
-                  {marketCloseReport.beSuggestions.map((line) => (
-                    <li key={line}>{line}</li>
-                  ))}
-                </ul>
               </div>
             </div>
 
