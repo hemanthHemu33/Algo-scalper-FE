@@ -58,7 +58,7 @@ type SavedLayout = {
   blotterOpen?: boolean;
 };
 
-type DateRangeKey = "1D" | "7D" | "30D" | "90D" | "LAST" | "ALL";
+type DateRangeKey = "TODAY" | "1D" | "7D" | "30D" | "90D" | "LAST" | "ALL";
 type EodCluster = {
   label: string;
   count: number;
@@ -84,6 +84,7 @@ const DATE_RANGE_OPTIONS: Array<{
   label: string;
   days: number | null;
 }> = [
+  { key: "TODAY", label: "Today", days: null },
   { key: "1D", label: "1D", days: 1 },
   { key: "7D", label: "7D", days: 7 },
   { key: "30D", label: "30D", days: 30 },
@@ -1178,7 +1179,7 @@ export default function App() {
     {},
   );
   const staleRef = React.useRef<Record<number, boolean>>({});
-  const [dateRange, setDateRange] = React.useState<DateRangeKey>("1D");
+  const [dateRange, setDateRange] = React.useState<DateRangeKey>("TODAY");
 
   const rangeConfig = React.useMemo(
     () =>
@@ -1234,6 +1235,12 @@ export default function App() {
   }, [currentDayStartMs, latestDataDayStartMs, latestDataMs]);
 
   const rangeWindow = React.useMemo(() => {
+    if (rangeConfig.key === "TODAY") {
+      return {
+        start: currentDayStartMs,
+        end: currentDayStartMs + 24 * 60 * 60 * 1000,
+      };
+    }
     if (rangeConfig.key === "LAST") {
       if (!Number.isFinite(latestDataDayStartMs as number)) {
         return { start: null, end: null };
@@ -1248,7 +1255,13 @@ export default function App() {
       start: serverNowMs - rangeConfig.days * 24 * 60 * 60 * 1000,
       end: serverNowMs,
     };
-  }, [rangeConfig.days, rangeConfig.key, latestDataDayStartMs, serverNowMs]);
+  }, [
+    currentDayStartMs,
+    rangeConfig.days,
+    rangeConfig.key,
+    latestDataDayStartMs,
+    serverNowMs,
+  ]);
 
   const rangeLabel = React.useMemo(() => {
     if (
@@ -1261,6 +1274,9 @@ export default function App() {
   }, [latestDataDayStartMs, rangeConfig.key, rangeConfig.label]);
 
   const rangeHint = React.useMemo(() => {
+    if (rangeConfig.key === "TODAY") {
+      return `today (${formatIstDate(currentDayStartMs)})`;
+    }
     if (rangeConfig.key === "LAST") {
       return Number.isFinite(latestDataDayStartMs as number)
         ? `last trading day (${formatIstDate(latestDataDayStartMs)})`
@@ -1268,7 +1284,7 @@ export default function App() {
     }
     if (rangeConfig.days) return `last ${rangeConfig.days}d`;
     return "all time";
-  }, [latestDataDayStartMs, rangeConfig.days, rangeConfig.key]);
+  }, [currentDayStartMs, latestDataDayStartMs, rangeConfig.days, rangeConfig.key]);
 
   const filteredTrades = React.useMemo(() => {
     const start = rangeWindow.start;
