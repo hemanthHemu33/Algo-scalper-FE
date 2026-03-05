@@ -263,6 +263,77 @@ function summarizeArrays(value: unknown) {
   return out.slice(0, 10);
 }
 
+type KnobField = {
+  path: string;
+  value: string;
+  kind: "number" | "boolean" | "string" | "json";
+};
+
+function flattenKnobFields(
+  value: unknown,
+  prefix = "",
+  out: KnobField[] = [],
+): KnobField[] {
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    const entries = Object.entries(value as Record<string, unknown>);
+    for (const [key, next] of entries) {
+      const nextPath = prefix ? `${prefix}.${key}` : key;
+      flattenKnobFields(next, nextPath, out);
+    }
+    if (!entries.length && prefix) {
+      out.push({ path: prefix, value: "{}", kind: "json" });
+    }
+    return out;
+  }
+  let kind: KnobField["kind"] = "json";
+  if (typeof value === "number") kind = "number";
+  else if (typeof value === "boolean") kind = "boolean";
+  else if (typeof value === "string") kind = "string";
+  const raw =
+    kind === "json"
+      ? JSON.stringify(value)
+      : value === null || value === undefined
+        ? ""
+        : String(value);
+  out.push({ path: prefix || "value", value: raw ?? "", kind });
+  return out;
+}
+
+function setKnobValue(target: Record<string, any>, path: string, value: any) {
+  const segments = path.split(".").filter(Boolean);
+  if (!segments.length) return;
+  let cursor: Record<string, any> = target;
+  for (let i = 0; i < segments.length - 1; i += 1) {
+    const seg = segments[i];
+    if (!cursor[seg] || typeof cursor[seg] !== "object" || Array.isArray(cursor[seg])) {
+      cursor[seg] = {};
+    }
+    cursor = cursor[seg];
+  }
+  cursor[segments[segments.length - 1]] = value;
+}
+
+function coerceKnobInput(field: KnobField, raw: string) {
+  if (field.kind === "number") {
+    const num = Number(raw);
+    if (!Number.isFinite(num)) {
+      throw new Error(`Invalid number for ${field.path}`);
+    }
+    return num;
+  }
+  if (field.kind === "boolean") {
+    if (raw === "true") return true;
+    if (raw === "false") return false;
+    throw new Error(`Invalid boolean for ${field.path}`);
+  }
+  if (field.kind === "string") return raw;
+  try {
+    return JSON.parse(raw);
+  } catch {
+    throw new Error(`Invalid JSON for ${field.path}`);
+  }
+}
+
 function toEpochMs(value: any): number | null {
   if (value === null || value === undefined || value === "") return null;
   if (typeof value === "number") {
@@ -802,6 +873,12 @@ export default function App() {
     refetchInterval: wsPoll ?? 30000,
     retry: false,
   });
+  const knobsQ = useQuery({
+    queryKey: ["config-knobs", settings.baseUrl, settings.apiKey],
+    queryFn: () => getJson<Record<string, unknown>>(settings, "/admin/config/knobs"),
+    refetchInterval: false,
+    retry: false,
+  });
   const tradingToggleQ = useQuery({
     queryKey: ["trading", settings.baseUrl, settings.apiKey],
     queryFn: () => getJson<Record<string, unknown>>(settings, "/admin/trading"),
@@ -866,6 +943,13 @@ export default function App() {
         label: "Config",
         endpoint: "/admin/config",
         query: configQ,
+        count: (data: any) => Object.keys(data ?? {}).length,
+      },
+      {
+        id: "config-knobs",
+        label: "Runtime knobs",
+        endpoint: "/admin/config/knobs",
+        query: knobsQ,
         count: (data: any) => Object.keys(data ?? {}).length,
       },
       {
@@ -1044,6 +1128,7 @@ export default function App() {
       readinessQ,
       statusQ,
       configQ,
+      knobsQ,
       tradingToggleQ,
       subsQ,
       tradesQ,
@@ -2059,6 +2144,27 @@ export default function App() {
   const [actionBusy, setActionBusy] = React.useState<Record<string, boolean>>(
     {},
   );
+  const runtimeKnobs =
+    (configQ.data?.runtimeKnobs as Record<string, unknown> | undefined) ||
+    (knobsQ.data as Record<string, unknown> | undefined) ||
+    {};
+  const runtimeKnobsFile =
+    (configQ.data?.runtimeKnobsFile as string | undefined) || null;
+  const knobFields = React.useMemo(
+    () => flattenKnobFields(runtimeKnobs).sort((a, b) => a.path.localeCompare(b.path)),
+    [runtimeKnobs],
+  );
+  const [knobDrafts, setKnobDrafts] = React.useState<Record<string, string>>({});
+
+  React.useEffect(() => {
+    if (!knobFields.length) {
+      setKnobDrafts({});
+      return;
+    }
+    const next: Record<string, string> = {};
+    for (const field of knobFields) next[field.path] = field.value;
+    setKnobDrafts(next);
+  }, [knobFields]);
 
   const runAction = React.useCallback(
     async <T,>(
@@ -2313,6 +2419,34 @@ export default function App() {
         severity: "info",
       }),
     );
+
+  const refreshKnobs = () => {
+    knobsQ.refetch();
+    configQ.refetch();
+  };
+
+  const handleKnobSave = () =>
+    runAction(
+      "knobsSave",
+      "Save runtime knobs",
+      async () => {
+        const payload: Record<string, any> = {};
+        for (const field of knobFields) {
+          const raw = knobDrafts[field.path] ?? "";
+          const parsed = coerceKnobInput(field, raw);
+          setKnobValue(payload, field.path, parsed);
+        }
+        return postJson(settings, "/admin/config/knobs", payload);
+      },
+      () => refreshKnobs(),
+    );
+
+  const handleKnobsReset = () => {
+    const next: Record<string, string> = {};
+    for (const field of knobFields) next[field.path] = field.value;
+    setKnobDrafts(next);
+    pushToast("good", "Knob form reset to latest persisted values.");
+  };
 
   const handleDbPurge = () => {
     console.clear();
@@ -3222,6 +3356,82 @@ export default function App() {
                 </div>
               ) : (
                 <div className="panelPlaceholder">Awaiting trade flow.</div>
+              )}
+            </div>
+          </div>
+
+          <div className="panel miniPanel wide">
+            <div className="panelHeader">
+              <div className="left">
+                <div style={{ fontWeight: 700 }}>🎛️ Runtime Knobs</div>
+                <span className="pill">/admin/config/knobs</span>
+                {runtimeKnobsFile ? <span className="pill mono">{runtimeKnobsFile}</span> : null}
+              </div>
+              <div className="actionsRow">
+                <button className="btn small" type="button" onClick={refreshKnobs}>
+                  Refresh
+                </button>
+                <button
+                  className="btn small"
+                  type="button"
+                  onClick={handleKnobSave}
+                  disabled={actionBusy.knobsSave || !knobFields.length}
+                >
+                  {actionBusy.knobsSave ? "Saving…" : "Save Knobs"}
+                </button>
+              </div>
+            </div>
+            <div className="panelBody">
+              {knobsQ.status === "error" ? (
+                <div className="panelPlaceholder badText">
+                  Failed to load knobs: {formatQueryError(knobsQ.error)}
+                </div>
+              ) : !knobFields.length ? (
+                <div className="panelPlaceholder">No runtime knobs returned yet.</div>
+              ) : (
+                <>
+                  <div className="knobGrid">
+                    {knobFields.map((field) => (
+                      <label key={field.path} className="knobField">
+                        <span className="knobLabel">{humanizePathLabel(field.path)}</span>
+                        <span className="knobMeta mono">{field.path}</span>
+                        {field.kind === "boolean" ? (
+                          <select
+                            value={knobDrafts[field.path] ?? "false"}
+                            onChange={(event) =>
+                              setKnobDrafts((prev) => ({
+                                ...prev,
+                                [field.path]: event.target.value,
+                              }))
+                            }
+                          >
+                            <option value="true">true</option>
+                            <option value="false">false</option>
+                          </select>
+                        ) : (
+                          <input
+                            className="input"
+                            type="text"
+                            value={knobDrafts[field.path] ?? ""}
+                            onChange={(event) =>
+                              setKnobDrafts((prev) => ({
+                                ...prev,
+                                [field.path]: event.target.value,
+                              }))
+                            }
+                            placeholder={field.kind === "json" ? "{}" : "Enter value"}
+                          />
+                        )}
+                      </label>
+                    ))}
+                  </div>
+                  <div className="actionsRow">
+                    <button className="btn small" type="button" onClick={handleKnobsReset}>
+                      Reset Form
+                    </button>
+                    <span className="actionNote">Values are typed from persisted knobs and posted back to backend for persistence.</span>
+                  </div>
+                </>
               )}
             </div>
           </div>

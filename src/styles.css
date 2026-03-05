@@ -665,6 +665,51 @@ button {
   width: 120px;
 }
 
+.input {
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: rgba(0,0,0,0.2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  outline: none;
+}
+
+.knobGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.knobField {
+  display: grid;
+  gap: 6px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: rgba(6, 11, 28, 0.45);
+}
+
+.knobField select {
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: rgba(0,0,0,0.2);
+  border: 1px solid var(--border);
+  color: var(--text);
+}
+
+.knobLabel {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.knobMeta {
+  font-size: 11px;
+  color: var(--muted);
+}
+
 .btn {
   padding: 8px 12px;
   border-radius: 10px;
